@@ -117,8 +117,11 @@ hua ssh profile add prod --host 1.2.3.4 --username root --password xxx
 hua ssh profile list
 hua ssh exec -p prod "uname -a && df -h"
 hua ssh upload ./file.txt /remote/path/file.txt
+hua ssh upload-dir ./dist /opt/app -p prod --clear --exclude node_modules
 hua ssh download /remote/path/file.txt ./local-file.txt
 ```
+
+`upload-dir` 会先把本地目录打成临时 `tar.gz`，上传到远端临时目录，远端解压后自动删除远端临时包，本地临时包也会自动清理。默认解压目录内容到目标目录（`--strip-components 1`）；如需保留本地目录名，使用 `--strip-components 0`。
 
 ### TTS 插件
 
@@ -165,7 +168,7 @@ export const helloPlugin = definePlugin({
 
 ## 下一步计划
 
-- SSH 插件：增加 `shell`（交互式 shell）、`upload`/`download`（文件传输）、`tunnel`（端口转发）命令
+- SSH 插件：增加 `tunnel`（端口转发）命令
 - HTTP 插件：增加响应格式化、历史记录等功能
 - SQL 插件：支持更多输出格式（json/csv）、执行脚本文件
 - 通用：项目级配置覆盖、环境变量支持

@@ -1,3 +1,7 @@
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import readline from "node:readline";
 import { Client, ClientChannel } from "ssh2";
 import { definePlugin } from "@hua/plugin-sdk";
@@ -51,6 +55,43 @@ function readStringOption(options: Record<string, unknown>, key: string): string
   return "";
 }
 
+function readStringArrayOption(options: Record<string, unknown>, key: string): string[] {
+  const value = options[key];
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value === "string" && value.trim()) {
+    return [value.trim()];
+  }
+  return [];
+}
+
+function readBooleanOption(options: Record<string, unknown>, key: string): boolean {
+  return options[key] === true;
+}
+
+function readNonNegativeIntegerOption(
+  options: Record<string, unknown>,
+  key: string,
+  defaultValue: number,
+): number {
+  const raw = readStringOption(options, key);
+  if (!raw) {
+    return defaultValue;
+  }
+
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isInteger(value) || value < 0) {
+    const flag = key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+    throw new Error(`Option --${flag} must be a non-negative integer.`);
+  }
+  return value;
+}
+
+function collectStringOption(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -68,6 +109,86 @@ function maskPassword(password?: string): string {
 function formatProfile(name: string, profile: SshProfile, isDefault: boolean): string {
   const defaultTag = isDefault ? " (default)" : "";
   return `${name}${defaultTag} -> ${profile.username}@${profile.host}:${profile.port}`;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function makeUploadStamp(): string {
+  return new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+}
+
+function sanitizeArchiveName(name: string): string {
+  return name.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "upload";
+}
+
+function joinRemotePath(dir: string, fileName: string): string {
+  const trimmed = dir.trim().replace(/\/+$/g, "");
+  return `${trimmed || "/"}/${fileName}`.replace(/^\/\//, "/");
+}
+
+function buildTarArgs(localDir: string, outputPath: string, excludes: string[]): string[] {
+  const parentDir = path.dirname(localDir);
+  const baseName = path.basename(localDir);
+  const args = ["-C", parentDir];
+
+  for (const pattern of excludes) {
+    args.push("--exclude", pattern);
+  }
+
+  args.push("-czf", outputPath, baseName);
+  return args;
+}
+
+function createTarArchive(localDir: string, outputPath: string, excludes: string[]): void {
+  const result = spawnSync("tar", buildTarArgs(localDir, outputPath, excludes), {
+    encoding: "utf-8",
+    stdio: "pipe",
+  });
+
+  if (result.error) {
+    throw new Error(`tar failed: ${result.error.message}`);
+  }
+
+  if (result.status !== 0) {
+    const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    throw new Error(output || `tar exited with code ${result.status ?? "unknown"}`);
+  }
+}
+
+function isUnsafeRemoteClearTarget(remoteDir: string): boolean {
+  const normalized = remoteDir.trim().replace(/\/+$/g, "") || "/";
+  return normalized === "/" || normalized === "." || normalized === "..";
+}
+
+function buildRemoteExtractCommand(
+  remoteTar: string,
+  remoteDir: string,
+  stripComponents: number,
+  clearRemote: boolean,
+): string {
+  const clearCommand = clearRemote
+    ? `
+rm -rf "$remote_dir"
+`
+    : "";
+
+  return `
+set -Eeuo pipefail
+remote_tar=${shellQuote(remoteTar)}
+remote_dir=${shellQuote(remoteDir)}
+cleanup() {
+  rm -f "$remote_tar"
+}
+trap cleanup EXIT
+if [ ! -f "$remote_tar" ]; then
+  echo "Remote archive not found: $remote_tar" >&2
+  exit 1
+fi
+${clearCommand}mkdir -p "$remote_dir"
+tar -C "$remote_dir" --strip-components=${stripComponents} -xzf "$remote_tar"
+`.trim();
 }
 
 export const sshPlugin = definePlugin({
@@ -398,6 +519,141 @@ export const sshPlugin = definePlugin({
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           throw new Error(`Upload failed (target: ${profile.username}@${profile.host}:${profile.port}): ${message}`);
+        }
+      },
+    },
+    {
+      name: "upload-dir",
+      aliases: ["updir"],
+      description: "Pack a local directory, upload it, extract it on the remote server, and remove temporary archives",
+      arguments: ["<localDir>", "<remoteDir>"],
+      options: [
+        {
+          flags: "-p, --profile <name>",
+          description: "Connection profile name",
+        },
+        {
+          flags: "--exclude <pattern>",
+          description: "Exclude a tar pattern; can be specified multiple times",
+          processor: collectStringOption,
+        },
+        {
+          flags: "--remote-tmp <dir>",
+          description: "Remote directory for the temporary archive (default: /tmp)",
+          defaultValue: "/tmp",
+        },
+        {
+          flags: "--strip-components <count>",
+          description: "Tar strip-components value when extracting (default: 1)",
+          defaultValue: 1,
+        },
+        {
+          flags: "--clear",
+          description: "Remove the remote target directory before extracting",
+        },
+        {
+          flags: "--dry-run",
+          description: "Print the planned operations without running them",
+        },
+      ],
+      async action(context) {
+        const localInput = (context.args[0] ?? "").trim();
+        const remoteDir = undoMsysPathConversion((context.args[1] ?? "").trim());
+
+        if (!localInput || !remoteDir) {
+          throw new Error("Usage: hua ssh upload-dir <localDir> <remoteDir>");
+        }
+
+        const localDir = path.resolve(localInput);
+        if (!fs.existsSync(localDir) || !fs.statSync(localDir).isDirectory()) {
+          throw new Error(`Local directory not found: ${localDir}`);
+        }
+
+        const clearRemote = readBooleanOption(context.options, "clear");
+        if (clearRemote && isUnsafeRemoteClearTarget(remoteDir)) {
+          throw new Error(`Refusing to clear unsafe remote directory: ${remoteDir}`);
+        }
+
+        const explicitProfile = readStringOption(context.options, "profile");
+        const resolved = resolveProfile(explicitProfile);
+
+        if (!resolved) {
+          throw new Error(
+            "No available SSH profile. Use `hua ssh profile add <name> --host ... --username ...` first.",
+          );
+        }
+
+        const { profile } = resolved;
+        const stripComponents = readNonNegativeIntegerOption(context.options, "stripComponents", 1);
+        const remoteTmpDir = undoMsysPathConversion(readStringOption(context.options, "remoteTmp") || "/tmp");
+        const dryRun = readBooleanOption(context.options, "dryRun");
+        const excludes = [".DS_Store", "*/.DS_Store", ...readStringArrayOption(context.options, "exclude")];
+        const archiveName = `${sanitizeArchiveName(path.basename(localDir))}-${makeUploadStamp()}-${process.pid}.tar.gz`;
+        const remoteTar = joinRemotePath(remoteTmpDir, archiveName);
+
+        if (dryRun) {
+          const plannedLocalTar = path.join(os.tmpdir(), archiveName);
+          context.log(`Would create archive: tar ${buildTarArgs(localDir, plannedLocalTar, excludes).join(" ")}`);
+          context.log(`Would upload: ${plannedLocalTar} -> ${profile.host}:${remoteTar}`);
+          context.log("Would execute remote extract script:");
+          context.log(buildRemoteExtractCommand(remoteTar, remoteDir, stripComponents, clearRemote));
+          return;
+        }
+
+        const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "hua-ssh-upload-"));
+        const localTar = path.join(tempDir, archiveName);
+        let remoteCleanupNeeded = false;
+
+        try {
+          context.log(`Packing: ${localDir}`);
+          createTarArchive(localDir, localTar, excludes);
+          const archiveSize = fs.statSync(localTar).size;
+          context.log(`Archive created: ${localTar} (${formatBytes(archiveSize)})`);
+
+          let lastPercent = -1;
+          await uploadFile(profile, localTar, remoteTar, (transferred, total) => {
+            if (total > 0) {
+              const percent = Math.floor((transferred / total) * 100);
+              if (percent !== lastPercent) {
+                lastPercent = percent;
+                process.stderr.write(`\rUploading: ${formatBytes(transferred)} / ${formatBytes(total)} (${percent}%)`);
+              }
+            }
+          });
+          if (lastPercent >= 0) process.stderr.write("\n");
+          remoteCleanupNeeded = true;
+
+          const result = await execCommand(
+            profile,
+            buildRemoteExtractCommand(remoteTar, remoteDir, stripComponents, clearRemote),
+          );
+          remoteCleanupNeeded = false;
+
+          if (result.stdout) {
+            context.log(result.stdout);
+          }
+          if (result.stderr) {
+            context.log(result.stderr);
+          }
+          if (result.exitCode !== 0) {
+            throw new Error(`Remote extract exited with code ${result.exitCode}`);
+          }
+
+          context.log(`Uploaded directory: ${localDir} -> ${profile.host}:${remoteDir}`);
+        } catch (err) {
+          if (remoteCleanupNeeded) {
+            try {
+              await execCommand(profile, `rm -f ${shellQuote(remoteTar)}`);
+            } catch (cleanupErr) {
+              const cleanupMessage = cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr);
+              context.error(`Warning: failed to remove remote temp archive ${remoteTar}: ${cleanupMessage}`);
+            }
+          }
+
+          const message = err instanceof Error ? err.message : String(err);
+          throw new Error(`Upload directory failed (target: ${profile.username}@${profile.host}:${profile.port}): ${message}`);
+        } finally {
+          fs.rmSync(tempDir, { recursive: true, force: true });
         }
       },
     },
