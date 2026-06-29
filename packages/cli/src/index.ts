@@ -4,6 +4,7 @@ import { sqlPlugin } from "@hua/plugin-sql";
 import { httpPlugin } from "@hua/plugin-http";
 import { sshPlugin } from "@hua/plugin-ssh";
 import { weixinPlugin } from "@hua/plugin-weixin";
+import { ttsPlugin } from "@hua/plugin-tts";
 
 async function main(): Promise<void> {
   const app = new HuaCliApp();
@@ -11,6 +12,7 @@ async function main(): Promise<void> {
   app.registerPlugin(httpPlugin);
   app.registerPlugin(sshPlugin);
   app.registerPlugin(weixinPlugin);
+  app.registerPlugin(ttsPlugin);
   await app.run(process.argv);
 }
 

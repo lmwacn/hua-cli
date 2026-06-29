@@ -17,6 +17,7 @@
     "@hua/plugin-sql": "0.1.0",
     "@hua/plugin-http": "0.1.0",
     "@hua/plugin-ssh": "0.1.0",
-    "@hua/plugin-weixin": "0.1.0"
+    "@hua/plugin-weixin": "0.1.0",
+    "@hua/plugin-tts": "0.1.0"
   }
 }

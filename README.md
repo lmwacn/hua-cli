@@ -2,7 +2,7 @@
 
 一个基于 Node.js + TypeScript 的插件化 CLI 工具骨架。
 
-内置了 `sql`、`http`、`ssh` 三个插件，分别用于数据库查询、HTTP 请求测试和远程服务器管理。
+内置了 `sql`、`http`、`ssh`、`tts` 等插件，分别用于数据库查询、HTTP 请求测试、远程服务器管理和语音合成。
 
 ## 特性
 
@@ -22,6 +22,7 @@ hua-cli/
     plugin-sql/   # MySQL 数据库查询
     plugin-http/  # HTTP 请求测试
     plugin-ssh/   # SSH 远程服务器管理
+    plugin-tts/   # 阿里云百炼语音合成
 ```
 
 ## 环境要求
@@ -119,7 +120,17 @@ hua ssh upload ./file.txt /remote/path/file.txt
 hua ssh download /remote/path/file.txt ./local-file.txt
 ```
 
-所有配置统一存储在 `~/.hua/config.json`。
+### TTS 插件
+
+```bash
+hua tts config set --api-key sk-xxx --voice Chelsie
+hua tts config show
+hua tts gen "你好，我是 Chelsie" -o output.wav
+hua tts gen --file input.txt -o output.wav
+hua tts gen "hello" --language English --voice Chelsie -o hello.wav
+```
+
+TTS 配置存储在 `~/.hua/tts.json`，保存时会将文件权限设置为 `0600`。其他插件配置存储在各自的 `~/.hua/*.json` 文件中。
 
 ## 插件开发
 

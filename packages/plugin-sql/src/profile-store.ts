@@ -1,6 +1,6 @@
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { ConfigManager, ProfileConfig } from "@hua/plugin-sdk";
 
 export interface SqlProfile {
   driver: "mysql";
@@ -11,35 +11,10 @@ export interface SqlProfile {
   database: string;
 }
 
-interface SqlConfigSection {
-  defaultProfile?: string;
-  profiles: Record<string, SqlProfile>;
-}
-
-interface HuaCliConfig {
-  sql: SqlConfigSection;
-}
-
-const DEFAULT_CONFIG: HuaCliConfig = {
-  sql: {
-    profiles: {},
-  },
-};
-
-function getConfigFilePath(): string {
-  return path.join(os.homedir(), ".hua", "config.json");
-}
-
-function cloneDefaultConfig(): HuaCliConfig {
-  return {
-    sql: {
-      defaultProfile: DEFAULT_CONFIG.sql.defaultProfile,
-      profiles: { ...DEFAULT_CONFIG.sql.profiles },
-    },
-  };
-}
-
-function normalizeProfile(value: unknown): SqlProfile | null {
+/**
+ * 验证并规范化 SQL profile
+ */
+function validateProfile(value: unknown): SqlProfile | null {
   if (!value || typeof value !== "object") {
     return null;
   }
@@ -62,165 +37,38 @@ function normalizeProfile(value: unknown): SqlProfile | null {
     return null;
   }
 
-  return {
-    driver,
-    host,
-    port,
-    user,
-    password,
-    database,
-  };
+  return { driver, host, port, user, password, database };
 }
 
-function normalizeConfig(value: unknown): HuaCliConfig {
-  const nextConfig = cloneDefaultConfig();
-  if (!value || typeof value !== "object") {
-    return nextConfig;
-  }
-
-  const root = value as Record<string, unknown>;
-  const sql = root.sql;
-  if (!sql || typeof sql !== "object") {
-    return nextConfig;
-  }
-
-  const sqlObject = sql as Record<string, unknown>;
-  if (typeof sqlObject.defaultProfile === "string" && sqlObject.defaultProfile.trim()) {
-    nextConfig.sql.defaultProfile = sqlObject.defaultProfile.trim();
-  }
-
-  const profiles = sqlObject.profiles;
-  if (!profiles || typeof profiles !== "object") {
-    return nextConfig;
-  }
-
-  for (const [name, profileValue] of Object.entries(profiles as Record<string, unknown>)) {
-    const profile = normalizeProfile(profileValue);
-    if (!profile) {
-      continue;
-    }
-
-    nextConfig.sql.profiles[name] = profile;
-  }
-
-  if (nextConfig.sql.defaultProfile && !nextConfig.sql.profiles[nextConfig.sql.defaultProfile]) {
-    delete nextConfig.sql.defaultProfile;
-  }
-
-  return nextConfig;
+/**
+ * 比较两个 SQL profile 是否相同
+ */
+function isProfileEqual(a: SqlProfile, b: SqlProfile): boolean {
+  return (
+    a.host === b.host &&
+    a.port === b.port &&
+    a.user === b.user &&
+    a.password === b.password &&
+    a.database === b.database
+  );
 }
 
-export function loadConfig(): HuaCliConfig {
-  const configPath = getConfigFilePath();
-  if (!fs.existsSync(configPath)) {
-    return cloneDefaultConfig();
-  }
+const sqlConfig: ProfileConfig<SqlProfile> = {
+  name: "sql",
+  configPath: path.join(os.homedir(), ".hua", "sql.json"),
+  validateProfile,
+  isProfileEqual,
+};
 
-  const raw = fs.readFileSync(configPath, "utf8");
-  if (!raw.trim()) {
-    return cloneDefaultConfig();
-  }
+const configManager = new ConfigManager(sqlConfig);
 
-  const parsed = JSON.parse(raw) as unknown;
-  return normalizeConfig(parsed);
-}
-
-function saveConfig(config: HuaCliConfig): void {
-  const configPath = getConfigFilePath();
-  const configDirectory = path.dirname(configPath);
-
-  let existing: Record<string, unknown> = {};
-  if (fs.existsSync(configPath)) {
-    const raw = fs.readFileSync(configPath, "utf8").trim();
-    if (raw) {
-      try {
-        existing = JSON.parse(raw) as Record<string, unknown>;
-      } catch {
-        existing = {};
-      }
-    }
-  }
-
-  existing.sql = config.sql;
-  fs.mkdirSync(configDirectory, { recursive: true });
-  fs.writeFileSync(configPath, `${JSON.stringify(existing, null, 2)}\n`, "utf8");
-}
-
-export function listProfiles(): Array<{ name: string; isDefault: boolean; profile: SqlProfile }> {
-  const config = loadConfig();
-  const defaultProfile = config.sql.defaultProfile;
-  return Object.entries(config.sql.profiles)
-    .map(([name, profile]) => ({
-      name,
-      profile,
-      isDefault: name === defaultProfile,
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-}
-
-export function addOrUpdateProfile(name: string, profile: SqlProfile): void {
-  const config = loadConfig();
-  config.sql.profiles[name] = profile;
-  if (!config.sql.defaultProfile) {
-    config.sql.defaultProfile = name;
-  }
-  saveConfig(config);
-}
-
-export function removeProfile(name: string): boolean {
-  const config = loadConfig();
-  if (!config.sql.profiles[name]) {
-    return false;
-  }
-
-  delete config.sql.profiles[name];
-  if (config.sql.defaultProfile === name) {
-    const remainingNames = Object.keys(config.sql.profiles).sort((a, b) => a.localeCompare(b));
-    config.sql.defaultProfile = remainingNames[0];
-  }
-  saveConfig(config);
-  return true;
-}
-
-export function setDefaultProfile(name: string): boolean {
-  const config = loadConfig();
-  if (!config.sql.profiles[name]) {
-    return false;
-  }
-
-  config.sql.defaultProfile = name;
-  saveConfig(config);
-  return true;
-}
-
-export function getProfile(name: string): SqlProfile | null {
-  const config = loadConfig();
-  return config.sql.profiles[name] ?? null;
-}
-
-export function getDefaultProfileName(): string | null {
-  const config = loadConfig();
-  return config.sql.defaultProfile ?? null;
-}
-
-export function resolveProfile(name?: string): { name: string; profile: SqlProfile } | null {
-  const config = loadConfig();
-  const targetName = name?.trim() || config.sql.defaultProfile;
-  if (!targetName) {
-    return null;
-  }
-
-  const profile = config.sql.profiles[targetName];
-  if (!profile) {
-    return null;
-  }
-
-  return {
-    name: targetName,
-    profile,
-  };
-}
-
-export function getConfigPath(): string {
-  return getConfigFilePath();
-}
+// 导出统一接口
+export const getConfigPath = () => configManager.getConfigPath();
+export const listProfiles = () => configManager.listProfiles();
+export const addOrUpdateProfile = (name: string, profile: SqlProfile) => configManager.addOrUpdateProfile(name, profile);
+export const removeProfile = (name: string) => configManager.removeProfile(name);
+export const setDefaultProfile = (name: string) => configManager.setDefaultProfile(name);
+export const getProfile = (name: string) => configManager.getProfile(name);
+export const getDefaultProfileName = () => configManager.getDefaultProfileName();
+export const resolveProfile = (name?: string) => configManager.resolveProfile(name);
+export const findDuplicateProfile = (profile: SqlProfile) => configManager.findDuplicateProfile(profile);

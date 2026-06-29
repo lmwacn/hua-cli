@@ -3,6 +3,7 @@ import readline from "node:readline";
 import { definePlugin } from "@hua/plugin-sdk";
 import {
   addOrUpdateProfile,
+  findDuplicateProfile,
   getConfigPath,
   getDefaultProfileName,
   getProfile,
@@ -337,24 +338,59 @@ export const sqlPlugin = definePlugin({
           throw new Error("Option --port must be a positive integer.");
         }
 
-        addOrUpdateProfile(name, {
+        const profile: SqlProfile = {
           driver: "mysql",
           host,
           port,
           user,
           password: password || undefined,
           database,
-        });
+        };
+
+        // 检查是否存在重复配置
+        const duplicate = findDuplicateProfile(profile);
+        if (duplicate) {
+          context.log(`\x1b[33m已存在相同配置的 profile: "${duplicate.name}"\x1b[0m`);
+          context.log(`配置内容: ${formatProfile(duplicate.name, duplicate.profile, false)}`);
+          context.log("");
+          context.log("请选择操作:");
+          context.log("  1. 使用已有的 profile（不创建新的）");
+          context.log("  2. 强制创建新 profile（即使内容相同）");
+          context.log("  3. 取消操作");
+          context.log("");
+
+          const choice = await new Promise<string>((resolve) => {
+            const rl = readline.createInterface({
+              input: process.stdin,
+              output: process.stdout,
+            });
+            rl.question("请输入选项 (1/2/3): ", (answer) => {
+              rl.close();
+              resolve(answer.trim());
+            });
+          });
+
+          switch (choice) {
+            case "1":
+              context.log(`使用已有 profile: ${duplicate.name}`);
+              return;
+            case "2":
+              // 继续创建
+              break;
+            case "3":
+              context.log("操作已取消");
+              return;
+            default:
+              context.log("无效选择，操作已取消");
+              return;
+          }
+        }
+
+        addOrUpdateProfile(name, profile);
 
         const defaultProfile = getDefaultProfileName();
         context.log(`Saved profile: ${name}`);
-        context.log(
-          formatProfile(
-            name,
-            { driver: "mysql", host, port, user, password: password || undefined, database },
-            defaultProfile === name,
-          ),
-        );
+        context.log(formatProfile(name, profile, defaultProfile === name));
       },
     },
     {

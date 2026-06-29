@@ -9,13 +9,15 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "tsc -b packages/plugin-sdk packages/core packages/plugin-sql packages/plugin-http packages/plugin-ssh packages/plugin-weixin packages/cli",
+    "build": "tsc -b packages/plugin-sdk packages/core packages/plugin-sql packages/plugin-http packages/plugin-ssh packages/plugin-weixin packages/plugin-tts packages/cli",
     "clean": "powershell -NoProfile -Command \"Get-ChildItem -Path packages -Directory | ForEach-Object { Remove-Item -Recurse -Force -ErrorAction SilentlyContinue (Join-Path $_.FullName 'dist') }\"",
     "hua": "node packages/cli/dist/index.js",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "migrate-config": "npx tsx scripts/migrate-config.ts"
   },
   "devDependencies": {
     "@types/node": "^22.15.17",
+    "tsx": "^4.19.4",
     "typescript": "^5.8.3"
   },
   "dependencies": {

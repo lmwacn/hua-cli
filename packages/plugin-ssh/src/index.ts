@@ -1,9 +1,10 @@
 import readline from "node:readline";
-import { Client } from "ssh2";
+import { Client, ClientChannel } from "ssh2";
 import { definePlugin } from "@hua/plugin-sdk";
 import { buildConnectConfig, execCommand, uploadFile, downloadFile, testConnection } from "./client";
 import {
   addOrUpdateProfile,
+  findDuplicateProfile,
   getConfigPath,
   getDefaultProfileName,
   getProfile,
@@ -184,96 +185,142 @@ export const sshPlugin = definePlugin({
 
         resetTimer();
 
-        const rl = readline.createInterface({
-          input: process.stdin,
-          output: process.stdout,
-          prompt: isTTY ? "ssh> " : undefined,
-          terminal: isTTY,
-        });
+        if (!isTTY) {
+          // Piped mode: use conn.shell() so the remote shell reads stdin directly,
+          // avoiding shell interpretation of special characters (quotes, parens, etc.)
+          const shellStream = await new Promise<ClientChannel>(
+            (resolve, reject) => {
+              conn.shell((err, stream) => {
+                if (err) reject(err);
+                else resolve(stream);
+              });
+            },
+          );
 
-        if (isTTY) rl.prompt();
+          shellStream.on("data", (data: Buffer) => {
+            process.stdout.write(data);
+          });
 
-        let running = false;
-        let inputClosed = false;
-        const queue: string[] = [];
+          shellStream.stderr.on("data", (data: Buffer) => {
+            process.stderr.write(data);
+          });
 
-        const tryExit = () => {
-          if (inputClosed && !running && queue.length === 0) {
-            closeConn();
-            process.exit(0);
-          }
-        };
+          const rl = readline.createInterface({
+            input: process.stdin,
+            terminal: false,
+          });
 
-        const executeCommand = (line: string) => {
-          running = true;
-          resetTimer();
+          rl.on("line", (line: string) => {
+            shellStream.write(line + "\n");
+          });
 
-          conn.exec(line, (err, stream) => {
-            if (err) {
-              console.error(`Error: ${err.message}`);
-              running = false;
-              if (isTTY) rl.prompt();
-              if (queue.length > 0) {
-                executeCommand(queue.shift()!);
-              } else {
-                tryExit();
+          rl.on("close", () => {
+            shellStream.end("exit\n");
+          });
+
+          await new Promise<void>((resolve) => {
+            shellStream.on("close", () => {
+              closeConn();
+              resolve();
+            });
+            process.on("SIGINT", () => {
+              closeConn();
+              resolve();
+            });
+          });
+        } else {
+          // Interactive mode: use per-line conn.exec() with queue
+          const rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout,
+            prompt: "ssh> ",
+            terminal: true,
+          });
+
+          rl.prompt();
+
+          let running = false;
+          let inputClosed = false;
+          const queue: string[] = [];
+
+          const tryExit = () => {
+            if (inputClosed && !running && queue.length === 0) {
+              closeConn();
+              process.exit(0);
+            }
+          };
+
+          const executeCommand = (line: string) => {
+            running = true;
+            resetTimer();
+
+            conn.exec(line, (err, stream) => {
+              if (err) {
+                console.error(`Error: ${err.message}`);
+                running = false;
+                rl.prompt();
+                if (queue.length > 0) {
+                  executeCommand(queue.shift()!);
+                } else {
+                  tryExit();
+                }
+                return;
               }
+
+              stream.stderr.on("data", (data: Buffer) => {
+                process.stderr.write(data);
+              });
+
+              stream.on("data", (data: Buffer) => {
+                process.stdout.write(data);
+              });
+
+              stream.on("close", () => {
+                running = false;
+                rl.prompt();
+                if (queue.length > 0) {
+                  executeCommand(queue.shift()!);
+                } else {
+                  tryExit();
+                }
+              });
+            });
+          };
+
+          rl.on("line", (line: string) => {
+            const trimmed = line.trim();
+            if (!trimmed) {
+              rl.prompt();
               return;
             }
 
-            stream.stderr.on("data", (data: Buffer) => {
-              process.stderr.write(data);
-            });
+            if (["exit", "quit", "\\q"].includes(trimmed.toLowerCase())) {
+              rl.close();
+              return;
+            }
 
-            stream.on("data", (data: Buffer) => {
-              process.stdout.write(data);
-            });
+            if (running) {
+              queue.push(trimmed);
+              return;
+            }
 
-            stream.on("close", () => {
-              running = false;
-              if (isTTY) rl.prompt();
-              if (queue.length > 0) {
-                executeCommand(queue.shift()!);
-              } else {
-                tryExit();
-              }
+            executeCommand(trimmed);
+          });
+
+          rl.on("close", () => {
+            inputClosed = true;
+            tryExit();
+          });
+
+          await new Promise<void>((resolve) => {
+            rl.on("close", resolve);
+            process.on("SIGINT", () => {
+              closeConn();
+              rl.close();
+              resolve();
             });
           });
-        };
-
-        rl.on("line", (line: string) => {
-          const trimmed = line.trim();
-          if (!trimmed) {
-            if (isTTY) rl.prompt();
-            return;
-          }
-
-          if (["exit", "quit", "\\q"].includes(trimmed.toLowerCase())) {
-            rl.close();
-            return;
-          }
-
-          if (running) {
-            queue.push(trimmed);
-            return;
-          }
-
-          executeCommand(trimmed);
-        });
-
-        rl.on("close", () => {
-          inputClosed = true;
-          tryExit();
-        });
-
-        await new Promise<void>((resolve) => {
-          rl.on("close", resolve);
-          process.on("SIGINT", () => {
-            closeConn();
-            rl.close();
-            resolve();
-          });
-        });
+        }
       },
     },
     {
@@ -467,6 +514,45 @@ export const sshPlugin = definePlugin({
           privateKeyPath: privateKeyPath || undefined,
           passphrase: passphrase || undefined,
         };
+
+        // 检查是否存在重复配置
+        const duplicate = findDuplicateProfile(profile);
+        if (duplicate) {
+          context.log(`\x1b[33m已存在相同配置的 profile: "${duplicate.name}"\x1b[0m`);
+          context.log(`配置内容: ${formatProfile(duplicate.name, duplicate.profile, false)}`);
+          context.log("");
+          context.log("请选择操作:");
+          context.log("  1. 使用已有的 profile（不创建新的）");
+          context.log("  2. 强制创建新 profile（即使内容相同）");
+          context.log("  3. 取消操作");
+          context.log("");
+
+          const choice = await new Promise<string>((resolve) => {
+            const rl = readline.createInterface({
+              input: process.stdin,
+              output: process.stdout,
+            });
+            rl.question("请输入选项 (1/2/3): ", (answer) => {
+              rl.close();
+              resolve(answer.trim());
+            });
+          });
+
+          switch (choice) {
+            case "1":
+              context.log(`使用已有 profile: ${duplicate.name}`);
+              return;
+            case "2":
+              // 继续创建
+              break;
+            case "3":
+              context.log("操作已取消");
+              return;
+            default:
+              context.log("无效选择，操作已取消");
+              return;
+          }
+        }
 
         addOrUpdateProfile(name, profile);
 

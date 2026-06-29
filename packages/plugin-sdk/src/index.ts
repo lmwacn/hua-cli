@@ -32,3 +32,6 @@ export interface HuaPlugin {
 export function definePlugin(plugin: HuaPlugin): HuaPlugin {
   return plugin;
 }
+
+export { ConfigManager } from "./config-manager";
+export type { ProfileConfig, ProfileListItem, DuplicateResult } from "./config-manager";

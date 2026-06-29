@@ -10,7 +10,8 @@
     { "path": "../plugin-sql" },
     { "path": "../plugin-http" },
     { "path": "../plugin-ssh" },
-    { "path": "../plugin-weixin" }
+    { "path": "../plugin-weixin" },
+    { "path": "../plugin-tts" }
   ],
   "include": [
     "src/**/*.ts"
