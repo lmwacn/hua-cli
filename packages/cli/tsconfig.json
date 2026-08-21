@@ -11,7 +11,8 @@
     { "path": "../plugin-http" },
     { "path": "../plugin-ssh" },
     { "path": "../plugin-weixin" },
-    { "path": "../plugin-tts" }
+    { "path": "../plugin-tts" },
+    { "path": "../plugin-qiniu" }
   ],
   "include": [
     "src/**/*.ts"

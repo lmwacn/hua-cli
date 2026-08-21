@@ -1,0 +1,20 @@
+{
+  "name": "@hua/plugin-qiniu",
+  "version": "0.1.0",
+  "description": "Qiniu Kodo bucket and object management plugin for hua-cli",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@hua/plugin-sdk": "0.1.0",
+    "qiniu": "^7.15.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.17"
+  }
+}

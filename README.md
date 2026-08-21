@@ -2,7 +2,7 @@
 
 一个基于 Node.js + TypeScript 的插件化 CLI 工具骨架。
 
-内置了 `sql`、`http`、`ssh`、`tts` 等插件，分别用于数据库查询、HTTP 请求测试、远程服务器管理和语音合成。
+内置了 `sql`、`http`、`ssh`、`tts`、`qiniu` 等插件，分别用于数据库查询、HTTP 请求测试、远程服务器管理、语音合成和七牛云对象存储管理。
 
 ## 特性
 
@@ -23,6 +23,7 @@ hua-cli/
     plugin-http/  # HTTP 请求测试
     plugin-ssh/   # SSH 远程服务器管理
     plugin-tts/   # 阿里云百炼语音合成
+    plugin-qiniu/ # 七牛云对象存储管理
 ```
 
 ## 环境要求
@@ -134,6 +135,25 @@ hua tts gen "hello" --language English --voice Chelsie -o hello.wav
 ```
 
 TTS 配置存储在 `~/.hua/tts.json`，保存时会将文件权限设置为 `0600`。其他插件配置存储在各自的 `~/.hua/*.json` 文件中。
+
+### 七牛云插件
+
+推荐通过环境变量提供凭证，Profile 默认引用 `QINIU_ACCESS_KEY` 和 `QINIU_SECRET_KEY`：
+
+```bash
+hua qiniu profile add dev --region z0
+hua qiniu profile test
+hua qiniu bucket list
+hua qiniu bucket info my-bucket
+hua qiniu bucket domains my-bucket
+hua qiniu object list my-bucket --prefix images/
+hua qiniu object upload my-bucket ./logo.png --key images/logo.png
+hua qiniu object download my-bucket images/logo.png -o ./logo.png
+hua qiniu object stat my-bucket images/logo.png
+hua qiniu object url my-bucket images/logo.png --expires 3600
+```
+
+也可以使用 `--access-key`、`--secret-key` 保存凭证。七牛配置存储在 `~/.hua/qiniu.json`，目录权限为 `0700`，文件权限为 `0600`。删除空间或对象必须显式传入 `--yes`；上传、复制、移动和本地下载默认不覆盖已有目标，需使用 `--force`。
 
 ## 插件开发
 
