@@ -151,9 +151,31 @@ hua qiniu object upload my-bucket ./logo.png --key images/logo.png
 hua qiniu object download my-bucket images/logo.png -o ./logo.png
 hua qiniu object stat my-bucket images/logo.png
 hua qiniu object url my-bucket images/logo.png --expires 3600
+
+# CDN 域名、缓存和统计
+hua qiniu cdn domain list
+hua qiniu cdn domain info cdn.example.com
+hua qiniu cdn refresh-url https://cdn.example.com/images/logo.png
+hua qiniu cdn refresh-dir https://cdn.example.com/images/
+hua qiniu cdn prefetch https://cdn.example.com/images/logo.png
+hua qiniu cdn traffic cdn.example.com --from 2026-08-01 --to 2026-08-07
+hua qiniu cdn bandwidth cdn.example.com --from 2026-08-01 --to 2026-08-07 --granularity hour
+hua qiniu cdn logs cdn.example.com --date 2026-08-07
 ```
 
 也可以使用 `--access-key`、`--secret-key` 保存凭证。七牛配置存储在 `~/.hua/qiniu.json`，目录权限为 `0700`，文件权限为 `0600`。删除空间或对象必须显式传入 `--yes`；上传、复制、移动和本地下载默认不覆盖已有目标，需使用 `--force`。
+
+CDN 域名的创建、上下线、删除和配置修改均要求 `--yes`。创建和修改使用 JSON 文件传入官方 API 请求体，避免敏感配置进入命令历史：
+
+```bash
+hua qiniu cdn domain create cdn.example.com --config ./domain-create.json --yes
+hua qiniu cdn domain update cdn.example.com cache --config ./cache.json --yes
+hua qiniu cdn domain offline cdn.example.com --yes
+hua qiniu cdn domain online cdn.example.com --yes
+hua qiniu cdn domain delete cdn.example.com --yes
+```
+
+`domain update` 支持 `geocover`、`source`、`range`、`sourcetimeout`、`cache`、`respheader`、`sslize`、`httpsconf`、`referer`、`ipacl`、`uaacl`、`timeacl`、`bsauth` 配置段。域名管理与 CDN 用量接口需要当前 AK/SK 具备对应权限。
 
 ## 插件开发
 

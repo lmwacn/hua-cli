@@ -23,6 +23,27 @@ import {
   setDefaultProfile,
 } from "./profile-store";
 import { formatBytes, formatPutTime, formatTable, storageTypeName } from "./formatter";
+import {
+  DOMAIN_CONFIG_SECTIONS,
+  changeCdnDomainState,
+  createCdnDomain,
+  deleteCdnDomain,
+  getCdnBandwidth,
+  getCdnDomain,
+  getCdnLogs,
+  getCdnTraffic,
+  listCdnDomains,
+  prefetchCdnUrls,
+  readJsonConfig,
+  redactSensitive,
+  refreshCdnDirs,
+  refreshCdnUrls,
+  updateCdnDomainConfig,
+  validateDate,
+  validateGranularity,
+  validateHttpUrls,
+  type DomainConfigSection,
+} from "./cdn-service";
 import type { QiniuProfile } from "./types";
 
 const profileOption: CommandOption = {
@@ -70,6 +91,20 @@ function safeBucketInfo(info: Record<string, unknown>): Record<string, unknown> 
     if (key in safe) safe[key] = "***";
   }
   return safe;
+}
+
+function requireConfirmation(context: CommandContext, action: string): void {
+  if (!booleanOption(context, "yes")) throw new Error(`Refusing to ${action} without --yes.`);
+}
+
+function validateDateRange(from: string, to: string): void {
+  if (from > to) throw new Error("--from must not be later than --to.");
+  const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000;
+  if (days > 30) throw new Error("CDN statistics date range cannot exceed 31 calendar days.");
+}
+
+function validateBatchSize(values: string[], maximum: number, label: string): void {
+  if (values.length > maximum) throw new Error(`A single ${label} request supports at most ${maximum} entries.`);
 }
 
 const commands: HuaCommand[] = [
@@ -384,10 +419,199 @@ const commands: HuaCommand[] = [
       context.log(`Deleted '${context.args[0]}:${context.args[1]}'.`);
     },
   },
+  {
+    parentPath: ["cdn", "domain"],
+    name: "list",
+    description: "List CDN domains",
+    options: [
+      profileOption,
+      { flags: "--limit <number>", description: "Maximum domains to return (1-10000)", defaultValue: 100 },
+      { flags: "--marker <marker>", description: "Continue from a previous marker" },
+      { flags: "--type <type>", description: "Filter by domain type: normal, wildcard, pan, or test" },
+      { flags: "--bucket <bucket>", description: "Filter by Qiniu bucket origin" },
+      { flags: "--json", description: "Output JSON" },
+    ],
+    async action(context) {
+      const type = stringOption(context, "type") || undefined;
+      if (type && !["normal", "wildcard", "pan", "test"].includes(type)) {
+        throw new Error("--type must be one of: normal, wildcard, pan, test.");
+      }
+      const result = await listCdnDomains(getSdk(context).sdk, {
+        limit: integerOption(context, "limit", 100),
+        marker: stringOption(context, "marker") || undefined,
+        type,
+        sourceBucket: stringOption(context, "bucket") || undefined,
+      });
+      if (booleanOption(context, "json")) {
+        context.log(JSON.stringify(redactSensitive(result), null, 2));
+        return;
+      }
+      const rows = result.domains.map((domain) => [
+        String(domain.name ?? ""),
+        String(domain.cname ?? ""),
+        String(domain.protocol ?? ""),
+        String(domain.geoCover ?? ""),
+        String(domain.operatingState ?? ""),
+      ]);
+      context.log(rows.length
+        ? formatTable(["DOMAIN", "CNAME", "PROTOCOL", "AREA", "STATE"], rows)
+        : "No CDN domains found.");
+      if (result.nextMarker) context.log(`Next marker: ${result.nextMarker}`);
+    },
+  },
+  {
+    parentPath: ["cdn", "domain"],
+    name: "info",
+    description: "Show CDN domain details",
+    arguments: ["<domain>"],
+    options: [profileOption],
+    async action(context) {
+      const result = await getCdnDomain(getSdk(context).sdk, context.args[0]);
+      context.log(JSON.stringify(redactSensitive(result), null, 2));
+    },
+  },
+  {
+    parentPath: ["cdn", "domain"],
+    name: "create",
+    description: "Create a CDN domain from a JSON configuration file",
+    arguments: ["<domain>"],
+    options: [
+      profileOption,
+      { flags: "--config <path>", description: "JSON file containing the official domain creation request" },
+      { flags: "--yes", description: "Confirm domain creation" },
+    ],
+    async action(context) {
+      requireConfirmation(context, "create CDN domain");
+      const configPath = stringOption(context, "config");
+      if (!configPath) throw new Error("--config <path> is required.");
+      await createCdnDomain(getSdk(context).sdk, context.args[0], readJsonConfig(configPath));
+      context.log(`CDN domain '${context.args[0]}' creation submitted.`);
+    },
+  },
+  {
+    parentPath: ["cdn", "domain"],
+    name: "update",
+    description: "Update one CDN domain configuration section from JSON",
+    arguments: ["<domain>", "<section>"],
+    options: [
+      profileOption,
+      { flags: "--config <path>", description: "JSON file containing the official section request" },
+      { flags: "--yes", description: "Confirm configuration update" },
+    ],
+    async action(context) {
+      requireConfirmation(context, "update CDN domain configuration");
+      const section = context.args[1] as DomainConfigSection;
+      if (!DOMAIN_CONFIG_SECTIONS.includes(section)) {
+        throw new Error(`Unsupported section '${context.args[1]}'. Use one of: ${DOMAIN_CONFIG_SECTIONS.join(", ")}.`);
+      }
+      const configPath = stringOption(context, "config");
+      if (!configPath) throw new Error("--config <path> is required.");
+      await updateCdnDomainConfig(getSdk(context).sdk, context.args[0], section, readJsonConfig(configPath));
+      context.log(`CDN domain '${context.args[0]}' section '${section}' update submitted.`);
+    },
+  },
+  ...(["online", "offline"] as const).map((state): HuaCommand => ({
+    parentPath: ["cdn", "domain"],
+    name: state,
+    description: `${state === "online" ? "Enable" : "Disable"} a CDN domain`,
+    arguments: ["<domain>"],
+    options: [profileOption, { flags: "--yes", description: `Confirm domain ${state}` }],
+    async action(context) {
+      requireConfirmation(context, `set CDN domain ${state}`);
+      await changeCdnDomainState(getSdk(context).sdk, context.args[0], state);
+      context.log(`CDN domain '${context.args[0]}' ${state} request submitted.`);
+    },
+  })),
+  {
+    parentPath: ["cdn", "domain"],
+    name: "delete",
+    description: "Delete an offline CDN domain",
+    arguments: ["<domain>"],
+    options: [profileOption, { flags: "--yes", description: "Confirm destructive deletion" }],
+    async action(context) {
+      requireConfirmation(context, "delete CDN domain");
+      await deleteCdnDomain(getSdk(context).sdk, context.args[0]);
+      context.log(`CDN domain '${context.args[0]}' deletion submitted.`);
+    },
+  },
+  {
+    parentPath: ["cdn"],
+    name: "refresh-url",
+    description: "Refresh CDN URL cache",
+    arguments: ["<urls...>"],
+    options: [profileOption, { flags: "--json", description: "Output JSON" }],
+    async action(context) {
+      const urls = validateHttpUrls(context.args, "url");
+      validateBatchSize(urls, 20, "URL refresh");
+      const result = await refreshCdnUrls(getSdk(context).sdk, urls);
+      context.log(booleanOption(context, "json") ? JSON.stringify(result, null, 2) : `Submitted ${urls.length} CDN URL refresh(es).`);
+    },
+  },
+  {
+    parentPath: ["cdn"],
+    name: "refresh-dir",
+    description: "Refresh CDN directory cache",
+    arguments: ["<directories...>"],
+    options: [profileOption, { flags: "--json", description: "Output JSON" }],
+    async action(context) {
+      const directories = validateHttpUrls(context.args, "directory");
+      validateBatchSize(directories, 10, "directory refresh");
+      const result = await refreshCdnDirs(getSdk(context).sdk, directories);
+      context.log(booleanOption(context, "json") ? JSON.stringify(result, null, 2) : `Submitted ${directories.length} CDN directory refresh(es).`);
+    },
+  },
+  {
+    parentPath: ["cdn"],
+    name: "prefetch",
+    description: "Prefetch URLs to CDN nodes",
+    arguments: ["<urls...>"],
+    options: [profileOption, { flags: "--json", description: "Output JSON" }],
+    async action(context) {
+      const urls = validateHttpUrls(context.args, "url");
+      validateBatchSize(urls, 100, "URL prefetch");
+      const result = await prefetchCdnUrls(getSdk(context).sdk, urls);
+      context.log(booleanOption(context, "json") ? JSON.stringify(result, null, 2) : `Submitted ${urls.length} CDN URL prefetch(es).`);
+    },
+  },
+  ...(["traffic", "bandwidth"] as const).map((metric): HuaCommand => ({
+    parentPath: ["cdn"],
+    name: metric,
+    description: `Query CDN ${metric}`,
+    arguments: ["<domain>"],
+    options: [
+      profileOption,
+      { flags: "--from <date>", description: "Start date in YYYY-MM-DD format" },
+      { flags: "--to <date>", description: "End date in YYYY-MM-DD format" },
+      { flags: "--granularity <value>", description: "5min, hour, or day", defaultValue: "day" },
+    ],
+    async action(context) {
+      const from = validateDate(stringOption(context, "from"), "--from");
+      const to = validateDate(stringOption(context, "to"), "--to");
+      validateDateRange(from, to);
+      const granularity = validateGranularity(stringOption(context, "granularity") || "day");
+      const sdk = getSdk(context).sdk;
+      const result = metric === "traffic"
+        ? await getCdnTraffic(sdk, context.args[0], from, to, granularity)
+        : await getCdnBandwidth(sdk, context.args[0], from, to, granularity);
+      context.log(JSON.stringify(result, null, 2));
+    },
+  })),
+  {
+    parentPath: ["cdn"],
+    name: "logs",
+    description: "Get CDN access log download links",
+    arguments: ["<domain>"],
+    options: [profileOption, { flags: "--date <date>", description: "Log date in YYYY-MM-DD format" }],
+    async action(context) {
+      const date = validateDate(stringOption(context, "date"), "--date");
+      const result = await getCdnLogs(getSdk(context).sdk, context.args[0], date);
+      context.log(JSON.stringify(result, null, 2));
+    },
+  },
 ];
 
 export const qiniuPlugin = definePlugin({
   name: "qiniu",
-  description: "Qiniu Kodo bucket and object management",
+  description: "Qiniu Kodo and CDN management",
   commands,
 });

@@ -5,6 +5,7 @@ export interface QiniuSdk {
   mac: qiniu.auth.digest.Mac;
   config: qiniu.conf.Config;
   bucketManager: qiniu.rs.BucketManager;
+  cdnManager: qiniu.cdn.CdnManager;
 }
 
 export function createSdk(credentials: QiniuCredentials): QiniuSdk {
@@ -14,7 +15,12 @@ export function createSdk(credentials: QiniuCredentials): QiniuSdk {
   if (credentials.regionId) {
     config.regionsProvider = qiniu.httpc.Region.fromRegionId(credentials.regionId);
   }
-  return { mac, config, bucketManager: new qiniu.rs.BucketManager(mac, config) };
+  return {
+    mac,
+    config,
+    bucketManager: new qiniu.rs.BucketManager(mac, config),
+    cdnManager: new qiniu.cdn.CdnManager(mac),
+  };
 }
 
 export function ensureSuccess<T>(result: { data: T; resp: { statusCode?: number } }, action: string): T {
