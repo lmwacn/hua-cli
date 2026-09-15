@@ -19,7 +19,7 @@ hua-cli/
     cli/          # CLI 入口
     core/         # 命令注册与运行时
     plugin-sdk/   # 插件接口定义
-    plugin-sql/   # MySQL 数据库查询
+    plugin-sql/   # MySQL / PostgreSQL 数据库查询
     plugin-http/  # HTTP 请求测试
     plugin-ssh/   # SSH 远程服务器管理
     plugin-tts/   # 阿里云百炼语音合成
@@ -93,14 +93,21 @@ npm unlink
 
 ### SQL 插件
 
+同一套 `hua sql` 命令支持 MySQL 和 PostgreSQL，通过 profile 的 `driver` 选择。旧配置无需迁移，未指定 driver 时仍使用 MySQL。
+
 ```bash
 hua sql profile add dev --host 127.0.0.1 --port 3306 --user root --database test
+hua sql profile add pg-dev --driver postgres --host 127.0.0.1 --user postgres --database test
 hua sql profile list
 hua sql profile use dev
 hua sql profile show
 hua sql profile remove dev
 hua sql query "SELECT * FROM users LIMIT 10" --profile dev
+hua sql query "SELECT current_database(), version()" -p pg-dev
+hua sql shell -p pg-dev < ./script.sql
 ```
+
+PostgreSQL 默认端口为 `5432`，MySQL 为 `3306`。使用 `--ssl` 启用证书校验，私有 CA 使用 `--ssl-ca /absolute/path/ca.pem`。事务、批量执行和配置说明见 [SQL 使用说明](./docs/sql.md)。
 
 ### HTTP 插件
 
@@ -212,5 +219,5 @@ export const helloPlugin = definePlugin({
 
 - SSH 插件：增加 `tunnel`（端口转发）命令
 - HTTP 插件：增加响应格式化、历史记录等功能
-- SQL 插件：支持更多输出格式（json/csv）、执行脚本文件
+- SQL 插件：支持更多输出格式（json/csv）、专用脚本文件参数
 - 通用：项目级配置覆盖、环境变量支持

@@ -7,6 +7,8 @@ import path from "node:path";
 export interface ProfileConfig<T> {
   /** 插件名称，如 "sql", "ssh", "http" */
   name: string;
+  /** 拒绝损坏或不支持的配置，避免静默丢弃后覆盖保存。 */
+  strictValidation?: boolean;
   /** 配置文件完整路径 */
   configPath: string;
   /** 验证并规范化 profile，返回 null 表示无效 */
@@ -78,7 +80,10 @@ export class ConfigManager<T> {
     try {
       const parsed = JSON.parse(raw) as unknown;
       return this.normalizeConfig(parsed);
-    } catch {
+    } catch (error) {
+      if (this.schema.strictValidation) {
+        throw new Error(`Invalid ${this.schema.name} configuration: ${error instanceof Error ? error.message : String(error)}`);
+      }
       return { profiles: {} };
     }
   }

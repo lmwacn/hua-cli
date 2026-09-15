@@ -139,31 +139,25 @@ app.registerPlugin(sqlPlugin);
 - 暂不做自动扫描本地目录
 - 暂不做外部插件市场和远程安装
 
-## SQL 插件建议
+## SQL 插件结构
 
-`sql` 插件建议继续拆成以下层次：
+`sql` 统一命令和 profile 管理，通过驱动适配 MySQL 与 PostgreSQL，不转换 SQL 方言：
 
 ```text
 src/
-  index.ts
-  commands/
-    query.ts
-    exec.ts
-    profile-list.ts
-    profile-add.ts
-  services/
-    connection-service.ts
-    query-service.ts
-    profile-service.ts
+  index.ts            # 命令参数与调用
+  profile-store.ts    # driver、连接配置与兼容校验
+  shell.ts            # 同一连接串行执行、超时与退出
+  statements.ts       # 按方言识别语句边界
+  format-results.ts   # 统一表格输出
   drivers/
-    mysql/
-      client.ts
-  config/
-    schema.ts
-  formatters/
-    table.ts
-    json.ts
+    types.ts          # 连接与结果接口
+    index.ts          # 根据 driver 选择实现
+    mysql.ts
+    postgres.ts
 ```
+
+新增驱动时复用命令层，明确其默认端口、结果类型和语句边界规则，并增加连接及事务集成测试。
 
 ## 新插件接入步骤
 

@@ -1,4 +1,6 @@
-import mysql from "mysql2/promise";
+import { connectSql } from "./drivers";
+import { formatResults } from "./format-results";
+import { runSqlShell } from "./shell";
 import readline from "node:readline";
 import { definePlugin } from "@hua/plugin-sdk";
 import {
@@ -12,6 +14,8 @@ import {
   resolveProfile,
   setDefaultProfile,
   SqlProfile,
+  parseDriver,
+  defaultPort,
 } from "./profile-store";
 
 function readStringOption(options: Record<string, unknown>, key: string): string {
@@ -34,35 +38,7 @@ function maskPassword(password?: string): string {
 
 function formatProfile(name: string, profile: SqlProfile, isDefault: boolean): string {
   const defaultTag = isDefault ? " (default)" : "";
-  return `${name}${defaultTag} -> ${profile.user}@${profile.host}:${profile.port}/${profile.database}`;
-}
-
-function formatResults(columns: mysql.FieldPacket[], rows: unknown[]): string {
-  if (rows.length === 0) {
-    return "(empty result set)";
-  }
-
-  const colWidths = columns.map((col) => col.name.length);
-  const data = rows as Record<string, unknown>[];
-
-  for (const row of data) {
-    columns.forEach((col, i) => {
-      const val = String(row[col.name] ?? "NULL");
-      colWidths[i] = Math.max(colWidths[i], val.length);
-    });
-  }
-
-  const header = columns.map((col, i) => col.name.padEnd(colWidths[i])).join(" | ");
-  const separator = colWidths.map((w) => "-".repeat(w)).join("-+-");
-
-  const lines: string[] = [header, separator];
-  for (const row of data) {
-    const rowStr = columns.map((col, i) => String(row[col.name] ?? "NULL").padEnd(colWidths[i])).join(" | ");
-    lines.push(rowStr);
-  }
-
-  lines.push(`\n${rows.length} row(s) returned`);
-  return lines.join("\n");
+  return `${name}${defaultTag} [${profile.driver}] -> ${profile.user}@${profile.host}:${profile.port}/${profile.database}`;
 }
 
 export const sqlPlugin = definePlugin({
@@ -92,36 +68,16 @@ export const sqlPlugin = definePlugin({
 
         const { profile } = resolved;
 
-        let connection: mysql.Connection | null = null;
         try {
-          connection = await mysql.createConnection({
-            host: profile.host,
-            port: profile.port,
-            user: profile.user,
-            password: profile.password,
-            database: profile.database,
-            connectTimeout: 5000,
-          });
-
-          const [rows, fields] = await connection.query(statement);
-
-          if (!fields || fields.length === 0) {
-            const affectedRows = (rows as mysql.ResultSetHeader).affectedRows;
-            if (affectedRows !== undefined) {
-              context.log(`Query OK, ${affectedRows} row(s) affected`);
-            } else {
-              context.log("Query executed successfully");
-            }
-          } else {
-            context.log(formatResults(fields as mysql.FieldPacket[], rows as unknown[]));
+          const connection = await connectSql(profile);
+          try {
+            context.log(formatResults(await connection.query(statement)));
+          } finally {
+            await connection.close();
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          throw new Error(`Query failed (target: ${profile.user}@${profile.host}:${profile.port}/${profile.database}): ${message}`);
-        } finally {
-          if (connection) {
-            await connection.end();
-          }
+          throw new Error(`Query failed (target: ${profile.driver} ${profile.user}@${profile.host}:${profile.port}/${profile.database}): ${message}`);
         }
       },
     },
@@ -150,142 +106,23 @@ export const sqlPlugin = definePlugin({
         }
 
         const { profile } = resolved;
-        const timeoutSec = Number.parseInt(readStringOption(context.options, "timeout") || "30", 10);
-        const timeoutMs = (Number.isFinite(timeoutSec) && timeoutSec > 0 ? timeoutSec : 30) * 1000;
-
-        const connection = await mysql.createConnection({
-          host: profile.host,
-          port: profile.port,
-          user: profile.user,
-          password: profile.password,
-          database: profile.database,
-          connectTimeout: 5000,
-          multipleStatements: true,
-        });
-
-        let idleTimer: ReturnType<typeof setTimeout> | null = null;
-        let closed = false;
-
-        const resetTimer = () => {
-          if (idleTimer) clearTimeout(idleTimer);
-          idleTimer = setTimeout(async () => {
-            if (closed) return;
-            closed = true;
-            try { await connection.end(); } catch {}
-            process.exit(0);
-          }, timeoutMs);
-        };
-
-        const closeConn = async () => {
-          if (closed) return;
-          closed = true;
-          if (idleTimer) clearTimeout(idleTimer);
-          try { await connection.end(); } catch {}
-        };
-
-        const isTTY = process.stdin.isTTY;
-
-        if (isTTY) {
-          context.log(`Connected to ${profile.user}@${profile.host}:${profile.port}/${profile.database}`);
+        const timeoutSec = Number(readStringOption(context.options, "timeout") || "30");
+        if (!Number.isFinite(timeoutSec) || timeoutSec <= 0 || timeoutSec * 1000 > 2147483647) {
+          throw new Error("Option --timeout must be a positive number within the timer range.");
+        }
+        const connection = await connectSql(profile);
+        if (process.stdin.isTTY) {
+          context.log(`Connected to ${profile.driver} ${profile.user}@${profile.host}:${profile.port}/${profile.database}`);
           context.log(`Idle timeout: ${timeoutSec}s | Type 'exit' to quit`);
         }
-
-        resetTimer();
-
-        const rl = readline.createInterface({
+        await runSqlShell(connection, {
           input: process.stdin,
           output: process.stdout,
-          prompt: isTTY ? "sql> " : undefined,
-          terminal: isTTY,
-        });
-
-        if (isTTY) rl.prompt();
-
-        let buffer = "";
-
-        rl.on("line", async (line: string) => {
-          const trimmed = line.trim();
-
-          // exit/quit check (always, even mid-buffer)
-          const cmd = trimmed.replace(/;+$/, "").toLowerCase();
-          if (["exit", "quit", "\\q"].includes(cmd)) {
-            buffer = "";
-            rl.close();
-            return;
-          }
-
-          buffer += (buffer ? "\n" : "") + line;
-
-          // Check if statement is complete (ends with ;)
-          const bufTrimmed = buffer.trim();
-          if (!bufTrimmed.endsWith(";")) {
-            // Incomplete statement, show continuation prompt
-            if (isTTY) process.stdout.write("  -> ");
-            return;
-          }
-
-          const statement = bufTrimmed.replace(/;+$/, "").trim();
-          buffer = "";
-
-          if (!statement) {
-            if (isTTY) rl.prompt();
-            return;
-          }
-
-          resetTimer();
-
-          try {
-            const [rows, fields] = await connection.query(statement);
-
-            const anyFields = fields as any;
-            const anyRows = rows as any;
-
-            // multipleStatements: fields is array of FieldPacket[] for each result
-            if (Array.isArray(anyFields) && anyFields.length > 0 && Array.isArray(anyFields[0])) {
-              for (let i = 0; i < anyFields.length; i++) {
-                if (anyFields[i] && anyFields[i].length > 0) {
-                  console.log(formatResults(anyFields[i], anyRows[i] || []));
-                } else if (i < anyRows.length) {
-                  const affectedRows = anyRows[i]?.affectedRows;
-                  if (affectedRows !== undefined) {
-                    console.log(`Query OK, ${affectedRows} row(s) affected`);
-                  } else {
-                    console.log("Query executed successfully");
-                  }
-                }
-                if (i < anyFields.length - 1) console.log("");
-              }
-            } else if (anyFields && anyFields.length > 0) {
-              console.log(formatResults(anyFields, anyRows));
-            } else {
-              const affectedRows = anyRows?.affectedRows;
-              if (affectedRows !== undefined) {
-                console.log(`Query OK, ${affectedRows} row(s) affected`);
-              } else {
-                console.log("Query executed successfully");
-              }
-            }
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            console.error(`Error: ${message}`);
-          }
-
-          if (isTTY) rl.prompt();
-        });
-
-        rl.on("close", async () => {
-          await closeConn();
-          process.exit(0);
-        });
-
-        // Keep process alive waiting for input
-        await new Promise<void>((resolve) => {
-          rl.on("close", resolve);
-          process.on("SIGINT", async () => {
-            await closeConn();
-            rl.close();
-            resolve();
-          });
+          log: context.log,
+          error: context.error,
+          driver: profile.driver,
+          timeoutMs: timeoutSec * 1000,
+          interactive: !!process.stdin.isTTY,
         });
       },
     },
@@ -314,7 +151,10 @@ export const sqlPlugin = definePlugin({
       arguments: ["<name>"],
       options: [
         { flags: "--host <host>", description: "Database host" },
-        { flags: "--port <port>", description: "Database port", defaultValue: 3306 },
+        { flags: "--driver <driver>", description: "Database driver: mysql or postgres (aliases: postgresql, pgsql); default mysql" },
+        { flags: "--port <port>", description: "Database port (MySQL: 3306, PostgreSQL: 5432)" },
+        { flags: "--ssl", description: "Enable TLS with certificate verification" },
+        { flags: "--ssl-ca <path>", description: "CA certificate file (implies --ssl)" },
         { flags: "--user <user>", description: "Database user" },
         { flags: "--password <password>", description: "Database password (optional)" },
         { flags: "--database <database>", description: "Database name" },
@@ -328,28 +168,35 @@ export const sqlPlugin = definePlugin({
         const host = readStringOption(context.options, "host");
         const user = readStringOption(context.options, "user");
         const database = readStringOption(context.options, "database");
-        const password = readStringOption(context.options, "password");
-        const port = Number.parseInt(readStringOption(context.options, "port") || "3306", 10);
+        const password = typeof context.options.password === "string" ? context.options.password : undefined;
+        const driver = parseDriver(context.options.driver);
+        const port = Number(readStringOption(context.options, "port") || defaultPort(driver));
+        const sslCa = readStringOption(context.options, "sslCa") || undefined;
 
         if (!host || !user || !database) {
           throw new Error("Missing required options. Required: --host, --user, --database.");
         }
-        if (!Number.isInteger(port) || port <= 0) {
-          throw new Error("Option --port must be a positive integer.");
+        if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+          throw new Error("Option --port must be an integer between 1 and 65535.");
         }
 
         const profile: SqlProfile = {
-          driver: "mysql",
+          driver,
           host,
           port,
           user,
           password: password || undefined,
           database,
+          ssl: !!(context.options.ssl || sslCa),
+          sslCa,
         };
 
         // 检查是否存在重复配置
         const duplicate = findDuplicateProfile(profile);
-        if (duplicate) {
+        if (duplicate && duplicate.name !== name) {
+          if (!process.stdin.isTTY) {
+            throw new Error(`Identical profile already exists: ${duplicate.name}. Use that profile or add from an interactive terminal.`);
+          }
           context.log(`\x1b[33m已存在相同配置的 profile: "${duplicate.name}"\x1b[0m`);
           context.log(`配置内容: ${formatProfile(duplicate.name, duplicate.profile, false)}`);
           context.log("");
@@ -432,6 +279,8 @@ export const sqlPlugin = definePlugin({
         const isDefault = getDefaultProfileName() === targetName;
         context.log(formatProfile(targetName, profile, isDefault));
         context.log(`driver=${profile.driver}`);
+        context.log(`ssl=${!!profile.ssl}`);
+        if (profile.sslCa) context.log(`sslCa=${profile.sslCa}`);
         context.log(`password=${maskPassword(profile.password)}`);
       },
     },
