@@ -6,6 +6,7 @@ import { sshPlugin } from "@hua/plugin-ssh";
 import { weixinPlugin } from "@hua/plugin-weixin";
 import { ttsPlugin } from "@hua/plugin-tts";
 import { qiniuPlugin } from "@hua/plugin-qiniu";
+import { gmailPlugin } from "@hua/plugin-gmail";
 
 async function main(): Promise<void> {
   const app = new HuaCliApp();
@@ -15,6 +16,7 @@ async function main(): Promise<void> {
   app.registerPlugin(weixinPlugin);
   app.registerPlugin(ttsPlugin);
   app.registerPlugin(qiniuPlugin);
+  app.registerPlugin(gmailPlugin);
   await app.run(process.argv);
 }
 

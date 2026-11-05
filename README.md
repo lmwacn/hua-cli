@@ -2,7 +2,7 @@
 
 一个基于 Node.js + TypeScript 的插件化 CLI 工具骨架。
 
-内置了 `sql`、`http`、`ssh`、`tts`、`qiniu` 等插件，分别用于数据库查询、HTTP 请求测试、远程服务器管理、语音合成和七牛云对象存储管理。
+内置了 `sql`、`http`、`ssh`、`tts`、`qiniu`、`gmail` 等插件，分别用于数据库查询、HTTP 请求测试、远程服务器管理、语音合成、七牛云对象存储管理和 Gmail 邮件操作。
 
 ## 特性
 
@@ -24,6 +24,7 @@ hua-cli/
     plugin-ssh/   # SSH 远程服务器管理
     plugin-tts/   # 阿里云百炼语音合成
     plugin-qiniu/ # 七牛云对象存储管理
+    plugin-gmail/ # Gmail 邮件操作
 ```
 
 ## 环境要求
@@ -183,6 +184,33 @@ hua qiniu cdn domain delete cdn.example.com --yes
 ```
 
 `domain update` 支持 `geocover`、`source`、`range`、`sourcetimeout`、`cache`、`respheader`、`sslize`、`httpsconf`、`referer`、`ipacl`、`uaacl`、`timeacl`、`bsauth` 配置段。域名管理与 CDN 用量接口需要当前 AK/SK 具备对应权限。
+
+## Gmail
+
+`hua gmail` 通过 Gmail API 搜索邮件、读取会话、管理草稿、发送和下载附件。结果以 JSON 输出。用 `-p` 选择账号配置，默认名称为 `default`。
+
+```bash
+# 有旧独立 CLI 的授权时，直接导入已有令牌。
+hua gmail auth import -p default
+# 首次授权时使用 Google Cloud 的桌面应用客户端 JSON。
+hua gmail auth login --credentials ./client_secret.json -p default
+hua gmail profile -p default
+hua gmail search 'is:unread newer_than:7d' --limit 10 -p default
+hua gmail read MESSAGE_ID -p default
+hua gmail thread THREAD_ID -p default
+hua gmail attachment MESSAGE_ID ATTACHMENT_ID --output ./report.pdf -p default
+hua gmail draft create --to user@example.com --subject '主题' --body '正文' -p default
+hua gmail send --to user@example.com --subject '主题' --body-file ./mail.txt --dry-run -p default
+hua gmail draft send DRAFT_ID -p default
+```
+
+首次授权前，在 Google Cloud 项目启用 Gmail API 并创建桌面应用 OAuth 客户端。[Google 官方配置文档](https://developers.google.com/workspace/gmail/api/quickstart/nodejs)
+
+登录时可加 `--readonly` 仅授予读取权限，或加 `--no-browser` 手动打开授权链接。已有 profile 可直接执行 `auth login -p NAME` 重新授权。`auth import -p NAME --from OLD_NAME` 读取旧目录 `~/.config/gmail-cli` 或 `GMAIL_CLI_HOME`，目标 profile 已授权时拒绝覆盖。授权保存在 `~/.hua/gmail/<profile>/token.json`，可用 `HUA_GMAIL_HOME` 指定另一根目录。文件含刷新令牌，请妥善保管。`auth logout` 清除本机授权文件。
+
+`draft create` 和 `send` 支持 `--reply-to MESSAGE_ID`、重复的收件人或附件参数，以及用 `--body-file -` 从标准输入读取正文。`send` 和 `draft send` 会立即发信，发送超时后先查看已发送邮件。`send --dry-run` 只预览内容。
+
+项目 Skill 位于 [.agents/skills/hua-cli](./.agents/skills/hua-cli/SKILL.md)。
 
 ## 插件开发
 

@@ -1,0 +1,16 @@
+{
+  "name": "@hua/plugin-gmail",
+  "version": "0.1.0",
+  "description": "Gmail API plugin for hua-cli",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": { "build": "tsc -b" },
+  "dependencies": {
+    "@hua/plugin-sdk": "0.1.0",
+    "@googleapis/gmail": "^18.0.0",
+    "google-auth-library": "^10.9.1",
+    "nodemailer": "^9.0.0"
+  },
+  "devDependencies": { "@types/nodemailer": "^8.0.2" }
+}

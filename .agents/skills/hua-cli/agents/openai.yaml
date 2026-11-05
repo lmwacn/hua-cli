@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hua CLI 工具"
+  short_description: "使用 hua-cli 操作 MySQL/PostgreSQL、远程服务器、七牛云对象与 CDN 及 Gmail 邮件"
+  default_prompt: "使用 $hua-cli，按当前任务选择 MySQL/PostgreSQL、SSH、七牛云或 Gmail 操作并复用已有配置。"
