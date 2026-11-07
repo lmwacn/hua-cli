@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { definePlugin } from "@hua/plugin-sdk";
+import { voiceCommands } from "./voice";
 import { downloadFile, synthesizeSpeech } from "./api";
 import { DEFAULT_CONFIG, getConfigPath, loadConfig, maskSecret, saveConfig } from "./config-store";
 import { TtsConfig, TtsProvider, TtsRequestOptions } from "./types";
@@ -137,6 +138,7 @@ export const ttsPlugin = definePlugin({
   name: "tts",
   description: "Aliyun Model Studio text-to-speech tools",
   commands: [
+    ...voiceCommands,
     {
       name: "gen",
       description: "Generate speech audio from text",

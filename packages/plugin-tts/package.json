@@ -4,7 +4,9 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "clone/*.py",
+    "clone/voice_lib/*.py"
   ],
   "scripts": {
     "build": "tsc -b"

@@ -144,6 +144,16 @@ hua tts gen "hello" --language English --voice Chelsie -o hello.wav
 
 TTS 配置存储在 `~/.hua/tts.json`，保存时会将文件权限设置为 `0600`。其他插件配置存储在各自的 `~/.hua/*.json` 文件中。
 
+`hua tts next` 使用 Qwen-Audio 3.1 TTS Next 按文字描述生成单人配音。`hua tts clone` 管理已有的百炼克隆音色。两个命令使用 Python 3.11+，可复用 `~/.hua-voice/voices.json`、原有百炼凭据或 `DASHSCOPE_API_KEY`。
+
+```bash
+hua tts next --text-file script.txt --style "自然普通话，声音清甜，像和朋友聊天" --title "AI 讲解"
+hua tts clone list
+hua tts clone audio --voice da-tie-chui --text-file script.txt --title "AI 讲解"
+```
+
+默认在 `Voice/<标题>-<唯一后缀>/` 写入音频、稿件和任务状态。首次运行 Next 时，如果注册表没有业务空间，可传 `--workspace-id`。更多命令见 [TTS 用法](.agents/skills/hua-cli/references/tts.md)。
+
 ### 七牛云插件
 
 推荐通过环境变量提供凭证，Profile 默认引用 `QINIU_ACCESS_KEY` 和 `QINIU_SECRET_KEY`：

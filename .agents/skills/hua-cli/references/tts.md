@@ -1,0 +1,17 @@
+# 百炼语音
+
+- `hua tts gen` 使用已有的 Qwen 或 CosyVoice 配置，默认读取 `~/.hua/tts.json`。具体参数见 `hua tts gen --help`。
+- `hua tts next` 用 `qwen-audio-3.1-tts-next` 根据文字描述生成单人干声，输入 `--text` 或 `--text-file`，用 `--style` 指定音色、语气及节奏。
+- `hua tts clone` 管理百炼克隆音色。先用 `list` 查名称，`status --voice <name>` 查部署状态，`audio --voice <name> --text-file <file>` 合成。新建用 `create`，恢复用 `discover` 和 `bind`，导入旧头像配置用 `import-avatar`。
+
+```bash
+hua tts next --text-file script.txt --style "年轻成年女性，自然普通话，声音清甜，像在和朋友聊天" --title "AI 讲解"
+hua tts clone audio --voice da-tie-chui --text-file script.txt --title "AI 讲解"
+hua tts clone create --name my-voice --prefix myvoice --audio-file sample.wav --workspace-id <workspace-id>
+```
+
+Next 和 clone 需要 Python 3.11+。默认复用北京地域注册表 `~/.hua-voice/voices.json` 及环境变量 `DASHSCOPE_API_KEY`、`~/.hua-voice/config.json` 或 `~/.hua-avatar/config.json`。本地凭据文件在 Unix 上须为 `0600`。可用 `--registry`、`--env-file` 指定替代文件。Next 可用 `--workspace-id` 指定业务空间。用 `hua tts clone doctor` 检查本地配置。
+
+克隆需有用户授权的单人录音和明确的创建请求。新音色处于 `DEPLOYING` 时用 `status` 继续查询。创建结果不明时按前缀查询和绑定。已提交但结果不明时不要自动重发创建或合成请求。
+
+两种配音默认写入 `Voice/<标题>-<唯一后缀>/`，保存原文、状态和 WAV，可用 `--format mp3` 或 `--output-root` 改输出。Next 的风格和稿件合计受 3000 字符提示词限制。完成后用绝对路径嵌入音频并提供文件链接。
