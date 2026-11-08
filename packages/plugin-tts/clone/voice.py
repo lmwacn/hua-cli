@@ -192,27 +192,36 @@ def synthesize(args, name, voice, client, voice_id):
 
 
 def synthesize_next(args, registry, values):
-    text = (args.text_file.read_text(encoding='utf-8-sig') if args.text_file else args.text).strip()
-    style = args.style.strip() if args.style else '一位女性用自然的普通话清晰地说'
-    prompt = f'{style}。全程是单人干声。她逐字说：“{text}”'
-    if not text or len(prompt) > 3000:
-        raise ValueError('文案不能为空，文案和风格组成的提示词不得超过 3000 字符')
+    soundscape = args.prompt is not None or args.prompt_file is not None
+    if soundscape:
+        if args.style is not None:
+            raise ValueError('--style 仅用于 --text 或 --text-file，请将风格写进完整提示词')
+        prompt = args.prompt_file.read_text(encoding='utf-8-sig') if args.prompt_file else args.prompt
+        source = prompt = prompt.strip()
+    else:
+        source = (args.text_file.read_text(encoding='utf-8-sig') if args.text_file else args.text).strip()
+        style = args.style.strip() if args.style else '一位女性用自然的普通话清晰地说'
+        prompt = f'{style}。全程是单人干声。她逐字说：“{source}”'
+    if not source or len(prompt) > 3000:
+        raise ValueError('输入不能为空，完整提示词不得超过 3000 字符')
     service = dict(registry.get('service', {}))
     if args.workspace_id:
         service['workspace_id'] = args.workspace_id
     if not re.fullmatch(r'[a-zA-Z0-9-]+', service.get('workspace_id') or ''):
         raise ValueError('缺少有效百炼业务空间，请传 --workspace-id 或配置音色注册表')
     client = client_for(service, values)
-    return save_audio(args, text, 'next', 'TTS Next', NEXT_MODEL, client, lambda: (
-        client.synthesize_next(prompt=prompt, audio_format=args.format)
-    ))
+    return save_audio(args, source, 'next', 'TTS Next', NEXT_MODEL, client, lambda: (
+        client.synthesize_next(prompt=prompt, audio_format=args.format,
+                               sample_rate=48000 if soundscape else 24000,
+                               channels=2 if soundscape else 1)
+    ), source_file='prompt.txt' if soundscape else 'script.txt')
 
 
-def save_audio(args, text, name, display_name, model, client, synthesize_audio):
+def save_audio(args, text, name, display_name, model, client, synthesize_audio, *, source_file='script.txt'):
     title = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', args.title or display_name).strip(' .')[:100] or '配音'
     directory = args.output_root.resolve() / (title + '-' + uuid.uuid4().hex[:8])
     directory.mkdir(parents=True, exist_ok=False)
-    (directory / 'script.txt').write_text(text + '\n', encoding='utf-8')
+    (directory / source_file).write_text(text + '\n', encoding='utf-8')
     manifest = {'status': 'synthesizing', 'name': name, 'model': model, 'outputs': {}}
     save_json(directory / 'manifest.json', manifest)
     try:
@@ -274,10 +283,12 @@ def parser():
     a.add_argument('--title')
     a.add_argument('--format', choices=['wav', 'mp3'], default='wav')
     a.add_argument('--output-root', type=Path, default=Path('Voice'))
-    n = sub.add_parser('next', help='用 Qwen-Audio 3.1 TTS Next 生成单人配音')
+    n = sub.add_parser('next', help='用 Qwen-Audio 3.1 TTS Next 生成单人配音或混合声景')
     source = n.add_mutually_exclusive_group(required=True)
     source.add_argument('--text')
     source.add_argument('--text-file', type=Path)
+    source.add_argument('--prompt')
+    source.add_argument('--prompt-file', type=Path)
     n.add_argument('--style')
     n.add_argument('--title')
     n.add_argument('--format', choices=['wav', 'mp3'], default='wav')

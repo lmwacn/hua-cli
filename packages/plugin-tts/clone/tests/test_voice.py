@@ -105,6 +105,31 @@ class VoiceTests(unittest.TestCase):
         self.assertNotIn('signed-secret', manifest.read_text())
         self.assertEqual(self.client.synthesis['voice_id'], 'id')
 
+    def test_next_passes_soundscape_prompt_without_dry_voice_template(self):
+        prompt = '一位女声说：“你好。”背景有钢琴和键盘声。'
+        prompt_file = self.root / 'soundscape.txt'
+        prompt_file.write_text(prompt, encoding='utf-8-sig')
+        http = FakeHTTP({'audio': {'url': 'https://example.invalid/audio'}})
+        client = voice.BailianClient(workspace_id='ws-test', region='cn-beijing', api_key='test', http=http)
+        with patch.object(voice, 'client_for', return_value=client):
+            for flags, expected, rate, channels, source_file in (
+                (['--prompt', prompt], prompt, 48000, 2, 'prompt.txt'),
+                (['--prompt-file', str(prompt_file)], prompt, 48000, 2, 'prompt.txt'),
+                (['--text', '你好', '--style', '轻柔女声'],
+                 '轻柔女声。全程是单人干声。她逐字说：“你好”', 24000, 1, 'script.txt'),
+            ):
+                with self.subTest(flags=flags):
+                    args = self.args('next', *flags, '--output-root', str(self.root))
+                    result = voice.synthesize_next(args, self.registry, {})
+                    self.assertEqual(http.calls[-1], {
+                        'model': voice.NEXT_MODEL,
+                        'input': {'text_prompt': expected, 'format': 'wav',
+                                  'sample_rate': rate, 'channels': channels},
+                    })
+                    saved = Path(result['directory']) / source_file
+                    self.assertEqual(saved.read_text(encoding='utf-8').strip(),
+                                     prompt if channels == 2 else '你好')
+
     def test_invalid_text_and_model_do_not_synthesize(self):
         args = self.args('audio', '--voice', 'my-voice', '--text', 'x' * 15001)
         v = {'model': voice.DEFAULT_MODEL, 'display_name': '声音'}

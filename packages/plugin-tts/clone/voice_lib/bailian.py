@@ -52,9 +52,10 @@ class BailianClient:
             audio_input["bit_rate"] = bit_rate
         return self._synthesize(model, audio_input)
 
-    def synthesize_next(self, *, prompt: str, audio_format: str) -> dict:
+    def synthesize_next(self, *, prompt: str, audio_format: str, sample_rate: int = 24000,
+                        channels: int = 1) -> dict:
         return self._synthesize(NEXT_MODEL, {
-            "text_prompt": prompt, "format": audio_format, "sample_rate": 24000, "channels": 1,
+            "text_prompt": prompt, "format": audio_format, "sample_rate": sample_rate, "channels": channels,
         })
 
     def _synthesize(self, model: str, audio_input: dict) -> dict:

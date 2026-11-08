@@ -1,14 +1,17 @@
 # 百炼语音
 
 - `hua tts gen` 使用已有的 Qwen 或 CosyVoice 配置，默认读取 `~/.hua/tts.json`。具体参数见 `hua tts gen --help`。
-- `hua tts next` 用 `qwen-audio-3.1-tts-next` 根据文字描述生成单人干声，输入 `--text` 或 `--text-file`，用 `--style` 指定音色、语气及节奏。
+- `hua tts next` 用 `qwen-audio-3.1-tts-next` 根据文字描述生成单人干声，输入 `--text` 或 `--text-file`，用 `--style` 指定音色、语气及节奏。用 `--prompt` 或 `--prompt-file` 提交完整声景描述，可一次生成旁白、背景音乐和环境音。
 - `hua tts clone` 管理百炼克隆音色。先用 `list` 查名称，`status --voice <name>` 查部署状态，`audio --voice <name> --text-file <file>` 合成。新建用 `create`，恢复用 `discover` 和 `bind`，导入旧头像配置用 `import-avatar`。
 
 ```bash
 hua tts next --text-file script.txt --style "年轻成年女性，自然普通话，声音清甜，像在和朋友聊天" --title "AI 讲解"
+hua tts next --prompt '清甜女声说：“我们先看 API 文档。”配低音量 lo-fi 音乐，开头有轻微键盘声。' --title "科技旁白"
 hua tts clone audio --voice da-tie-chui --text-file script.txt --title "AI 讲解"
 hua tts clone create --name my-voice --prefix myvoice --audio-file sample.wav --workspace-id <workspace-id>
 ```
+
+四种 Next 输入选项互斥。声景模式把完整提示词直接交给模型，输出 48 kHz 立体声混合音轨，并保存 `prompt.txt`。请在提示词里写清要逐字读出的台词、音乐音量和音效出现时机。纯配音模式输出 24 kHz 单声道，保存 `script.txt`。
 
 Next 和 clone 需要 Python 3.11+。默认复用北京地域注册表 `~/.hua-voice/voices.json` 及环境变量 `DASHSCOPE_API_KEY`、`~/.hua-voice/config.json` 或 `~/.hua-avatar/config.json`。本地凭据文件在 Unix 上须为 `0600`。可用 `--registry`、`--env-file` 指定替代文件。Next 可用 `--workspace-id` 指定业务空间。用 `hua tts clone doctor` 检查本地配置。
 

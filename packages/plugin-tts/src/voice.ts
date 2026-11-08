@@ -3,8 +3,8 @@ import path from "node:path";
 import type { HuaCommand } from "@hua/plugin-sdk";
 
 const commands = [
-  { name: "next", description: "Generate speech with Qwen-Audio 3.1 TTS Next", flags: [
-    "text", "text-file", "style", "title", "format", "output-root", "workspace-id",
+  { name: "next", description: "Generate narration or a mixed soundscape with Qwen-Audio 3.1 TTS Next", flags: [
+    "text", "text-file", "prompt", "prompt-file", "style", "title", "format", "output-root", "workspace-id",
   ] },
   { name: "list", description: "List registered clone voices", flags: [] },
   { name: "doctor", description: "Check local clone voice configuration", flags: [] },
