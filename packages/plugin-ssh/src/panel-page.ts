@@ -23,9 +23,9 @@ export function renderPanel(token: string, nonce: string): string {
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   body { margin: 0; background: var(--canvas); color: var(--ink); }
-  main { max-width: 82rem; margin: auto; padding: clamp(1rem, 4vw, 3.5rem); }
+  main { max-width: 100rem; margin: auto; padding: 1.5rem clamp(1rem, 3vw, 2.5rem); }
   header, .heading, .actions { display: flex; align-items: center; gap: .55rem; }
-  header { justify-content: space-between; flex-wrap: wrap; gap: 1.25rem; margin-bottom: 1.75rem; }
+  header { justify-content: space-between; flex-wrap: wrap; gap: 1.25rem; margin-bottom: 1.25rem; }
   .heading { gap: .8rem; }
   .brand {
     display: grid; place-items: center; width: 2.9rem; height: 2.9rem; border-radius: .8rem;
@@ -46,10 +46,9 @@ export function renderPanel(token: string, nonce: string): string {
   .primary { background: #2d51cf; border-color: #2d51cf; color: #fff; }
   .primary:hover { background: #2341ad; }
   .secondary, .test { background: var(--accent-bg); color: var(--accent); border-color: transparent; }
-  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: .9rem; overflow: hidden; }
   .panel-head {
     display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
-    gap: .5rem; padding: .85rem 1.1rem;
+    gap: .5rem; margin-bottom: .65rem;
   }
   .panel-head h2 { font-size: 1rem; }
   .count, .tag { display: inline-block; border-radius: 1rem; background: var(--subtle); color: var(--muted); }
@@ -57,19 +56,31 @@ export function renderPanel(token: string, nonce: string): string {
   .tag { margin-left: .5rem; background: var(--accent-bg); color: var(--accent); }
   #test-summary { color: var(--accent); font-size: .9rem; font-variant-numeric: tabular-nums; }
   #notice:not(:empty) { margin-bottom: 1rem; }
-  #empty { padding: 2.5rem 1rem; text-align: center; color: var(--muted); border-top: 1px solid var(--line); }
-  table { width: 100%; border-collapse: collapse; text-align: left; }
-  th, td { padding: .72rem 1.1rem; border-top: 1px solid var(--line); }
-  th { background: var(--subtle); color: var(--muted); font-size: .82rem; white-space: nowrap; }
-  td { overflow-wrap: anywhere; }
-  td:first-child { font-weight: 650; }
-  tbody tr:hover { background: var(--subtle); }
-  .address { font: .88rem/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; }
-  .auth, .status { color: var(--muted); font-size: .85rem; }
-  .status { max-width: 15rem; }
+  #empty {
+    padding: 2rem 1rem; text-align: center; color: var(--muted);
+    border: 1px dashed var(--line); border-radius: .75rem;
+  }
+  .profiles {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr));
+    gap: .6rem; list-style: none; padding: 0; margin: 0;
+  }
+  .profile {
+    display: flex; flex-direction: column; gap: .25rem; min-width: 0;
+    padding: .6rem .8rem; border: 1px solid var(--line); border-radius: .75rem;
+    background: var(--surface); overflow-wrap: anywhere;
+  }
+  .profile-head, .profile-meta { display: flex; align-items: baseline; flex-wrap: wrap; gap: .3rem .5rem; }
+  .profile-head { justify-content: space-between; }
+  .profile h3 { margin: 0; font-size: 1rem; }
+  .profile .tag { margin: 0; }
+  .address { font: .85rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+  .auth, .status, .failure { color: var(--muted); font-size: .82rem; }
+  .auth { margin-left: auto; }
+  .failure summary { color: var(--danger); cursor: pointer; }
+  .failure p { margin-top: .2rem; }
   .success { color: var(--success); }
   .error { color: var(--danger); }
-  .row-actions { gap: .25rem; }
+  .row-actions { gap: .25rem; margin-top: auto; }
   .row-actions button { font-size: .84rem; padding: .34rem .5rem; border-color: transparent; }
   .row-actions button:not(.test) { background: transparent; }
   .row-actions button:hover { border-color: var(--line); }
@@ -90,16 +101,6 @@ export function renderPanel(token: string, nonce: string): string {
   .pair { display: grid; grid-template-columns: 2fr 1fr; gap: .75rem; }
   form .actions { justify-content: flex-end; }
   [role=alert]:empty { display: none; }
-  @media (max-width: 52rem) {
-    table, tbody { display: block; }
-    thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-    tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .4rem .8rem; padding: .9rem 1.1rem; border-top: 1px solid var(--line); }
-    td { display: block; padding: 0; border: 0; }
-    .auth { grid-row: 1; grid-column: 2; }
-    .address, .status, tbody td:last-child { grid-column: 1 / -1; }
-    .status { max-width: none; }
-    .row-actions button { padding: .44rem .6rem; }
-  }
 </style>
 </head>
 <body>
@@ -116,16 +117,13 @@ export function renderPanel(token: string, nonce: string): string {
     </div>
   </header>
   <p id="notice" class="error" role="alert"></p>
-  <section class="panel" aria-labelledby="connections">
+  <section aria-labelledby="connections">
     <div class="panel-head">
       <div class="actions"><h2 id="connections">连接列表</h2><span id="connection-count" class="count" hidden></span></div>
       <p id="test-summary" role="status" hidden></p>
     </div>
     <p id="empty" hidden>暂无 SSH 配置。</p>
-    <table id="profiles" role="table" aria-labelledby="connections" hidden>
-      <thead role="rowgroup"><tr role="row"><th scope="col">名称</th><th scope="col">连接地址</th><th scope="col">认证</th><th scope="col">测试状态</th><th scope="col">操作</th></tr></thead>
-      <tbody role="rowgroup"></tbody>
-    </table>
+    <ul id="profiles" class="profiles" role="list" aria-labelledby="connections" hidden></ul>
   </section>
 </main>
 <dialog id="editor" aria-labelledby="editor-title">
@@ -158,7 +156,7 @@ export function renderPanel(token: string, nonce: string): string {
   const form = byId("profile-form");
   const notice = byId("notice");
   const fields = form.elements;
-  const table = byId("profiles");
+  const cards = byId("profiles");
   const testAll = byId("test-all");
   const summary = byId("test-summary");
   const rowTests = [];
@@ -199,52 +197,63 @@ export function renderPanel(token: string, nonce: string): string {
     count.hidden = false;
     testAll.disabled = profiles.length === 0;
     summary.hidden = true;
-    table.hidden = profiles.length === 0;
+    cards.hidden = profiles.length === 0;
     byId("empty").hidden = profiles.length > 0;
-    table.tBodies[0].replaceChildren();
+    cards.replaceChildren();
     for (const profile of profiles) {
-      const row = table.tBodies[0].insertRow();
-      row.setAttribute("role", "row");
-      const nameCell = row.insertCell();
-      const name = document.createElement("span");
+      const card = document.createElement("li");
+      card.className = "profile";
+      const heading = document.createElement("div");
+      heading.className = "profile-head";
+      const name = document.createElement("h3");
       name.textContent = profile.name;
-      nameCell.append(name);
+      heading.append(name);
       if (profile.isDefault) {
-        const tag = document.createElement("small");
+        const tag = document.createElement("span");
         tag.className = "tag";
         tag.textContent = "默认";
-        nameCell.append(tag);
+        heading.append(tag);
       }
       const host = profile.host.includes(":") ? "[" + profile.host + "]" : profile.host;
-      const address = row.insertCell();
+      const address = document.createElement("p");
       address.className = "address";
       address.textContent = profile.username + "@" + host + ":" + profile.port;
-      const auth = row.insertCell();
+      const meta = document.createElement("div");
+      meta.className = "profile-meta";
+      const auth = document.createElement("span");
       auth.className = "auth";
       auth.textContent = profile.authMethod === "key" ? "私钥" : "密码";
-      const status = row.insertCell();
-      status.className = "status";
       const result = document.createElement("span");
+      result.className = "status";
       result.textContent = "未测试";
       result.setAttribute("role", "status");
-      status.append(result);
-      const cell = row.insertCell();
-      for (const item of row.cells) item.setAttribute("role", "cell");
+      const failure = document.createElement("details");
+      failure.className = "failure";
+      failure.hidden = true;
+      const failureLabel = document.createElement("summary");
+      failureLabel.textContent = "查看原因";
+      const failureMessage = document.createElement("p");
+      failure.append(failureLabel, failureMessage);
+      meta.append(result, failure, auth);
       const actions = document.createElement("div");
       actions.className = "actions row-actions";
+      const showStatus = (message, tone = "", reason = "") => {
+        result.className = ("status " + tone).trim();
+        result.textContent = message;
+        failure.open = false;
+        failure.hidden = !reason;
+        failureMessage.textContent = reason;
+      };
       let pending;
       const runTest = () => {
         if (pending) return pending;
         control.disabled = true;
-        result.className = "";
-        result.textContent = "正在连接…";
+        showStatus("正在连接…");
         pending = api("test", { name: profile.name }).then((data) => {
-          result.className = "success";
-          result.textContent = "认证成功 · " + data.elapsedMs + " ms";
+          showStatus("认证成功 · " + data.elapsedMs + " ms", "success");
           return true;
         }, (error) => {
-          result.className = "error";
-          result.textContent = error.message;
+          showStatus("测试失败", "error", error.message);
           return false;
         }).finally(() => {
           pending = undefined;
@@ -259,7 +268,7 @@ export function renderPanel(token: string, nonce: string): string {
         }
       });
       control.className = "test";
-      rowTests.push({ runTest, result, isPending: () => Boolean(pending) });
+      rowTests.push({ runTest, showStatus, isPending: () => Boolean(pending) });
       actions.append(control, button("编辑", () => openEditor(profile)));
       if (!profile.isDefault) {
         actions.append(button("设为默认", () => update("default", { name: profile.name })));
@@ -269,7 +278,8 @@ export function renderPanel(token: string, nonce: string): string {
           update("remove", { name: profile.name });
         }
       }));
-      cell.append(actions);
+      card.append(heading, address, meta, actions);
+      cards.append(card);
     }
   }
 
@@ -287,8 +297,7 @@ export function renderPanel(token: string, nonce: string): string {
     };
     for (const test of rowTests) {
       if (!test.isPending()) {
-        test.result.className = "";
-        test.result.textContent = "等待测试…";
+        test.showStatus("等待测试…");
       }
     }
     summary.hidden = false;
