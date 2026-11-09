@@ -9,6 +9,8 @@ export interface ProfileConfig<T> {
   name: string;
   /** 拒绝损坏或不支持的配置，避免静默丢弃后覆盖保存。 */
   strictValidation?: boolean;
+  /** 通过同目录临时文件替换配置，避免写入失败时损坏原文件。 */
+  atomicWrites?: boolean;
   /** 配置文件完整路径 */
   configPath: string;
   /** 验证并规范化 profile，返回 null 表示无效 */
@@ -95,7 +97,21 @@ export class ConfigManager<T> {
     const configPath = this.schema.configPath;
     const configDir = path.dirname(configPath);
     fs.mkdirSync(configDir, { recursive: true });
-    fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    const contents = `${JSON.stringify(config, null, 2)}\n`;
+    if (!this.schema.atomicWrites) {
+      fs.writeFileSync(configPath, contents, "utf8");
+      return;
+    }
+
+    const targetPath = fs.existsSync(configPath) ? fs.realpathSync(configPath) : configPath;
+    const tempDir = fs.mkdtempSync(path.join(path.dirname(targetPath), ".config-"));
+    try {
+      const tempPath = path.join(tempDir, path.basename(configPath));
+      fs.writeFileSync(tempPath, contents, { encoding: "utf8", mode: 0o600 });
+      fs.renameSync(tempPath, targetPath);
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
   }
 
   /**

@@ -66,6 +66,7 @@ export function testConnection(profile: SshProfile): Promise<{ host: string; por
     conn.on("error", (err) => {
       reject(new Error(`SSH connection failed: ${err.message}`));
     });
+    conn.on("close", () => reject(new Error("SSH connection closed before authentication.")));
 
     try {
       conn.connect(buildConnectConfig(profile));

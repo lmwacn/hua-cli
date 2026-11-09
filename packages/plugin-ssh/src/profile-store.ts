@@ -56,6 +56,8 @@ function isProfileEqual(a: SshProfile, b: SshProfile): boolean {
 
 const sshConfig: ProfileConfig<SshProfile> = {
   name: "ssh",
+  strictValidation: true,
+  atomicWrites: true,
   configPath: path.join(os.homedir(), ".hua", "ssh.json"),
   validateProfile,
   isProfileEqual,
@@ -73,3 +75,20 @@ export const getProfile = (name: string) => configManager.getProfile(name);
 export const getDefaultProfileName = () => configManager.getDefaultProfileName();
 export const resolveProfile = (name?: string) => configManager.resolveProfile(name);
 export const findDuplicateProfile = (profile: SshProfile) => configManager.findDuplicateProfile(profile);
+
+export function savePanelProfile(
+  name: string,
+  profile: SshProfile,
+  originalName?: string,
+): "saved" | "exists" | "missing" {
+  const config = configManager.loadConfig();
+  const hasProfile = (key: string) => Object.prototype.hasOwnProperty.call(config.profiles, key);
+  if (originalName !== undefined && !hasProfile(originalName)) return "missing";
+  if (name !== originalName && hasProfile(name)) return "exists";
+
+  config.profiles[name] = profile;
+  if (originalName !== undefined && originalName !== name) delete config.profiles[originalName];
+  if (!config.defaultProfile || config.defaultProfile === originalName) config.defaultProfile = name;
+  configManager.saveConfig(config);
+  return "saved";
+}

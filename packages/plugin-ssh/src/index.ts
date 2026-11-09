@@ -18,6 +18,7 @@ import {
   setDefaultProfile,
 } from "./profile-store";
 import { SshProfile } from "./types";
+import { startSshPanel } from "./panel";
 
 /**
  * Git Bash (MSYS) auto-converts Unix-style paths like /root/file to
@@ -195,6 +196,14 @@ export const sshPlugin = definePlugin({
   name: "ssh",
   description: "SSH remote server commands",
   commands: [
+    {
+      name: "panel",
+      description: "Start a local SSH profile management panel",
+      async action(context) {
+        const url = await startSshPanel();
+        context.log(`在浏览器中打开 ${url}，按 Ctrl+C 关闭面板。`);
+      },
+    },
     {
       name: "exec",
       description: "Execute a command on a remote SSH server",
