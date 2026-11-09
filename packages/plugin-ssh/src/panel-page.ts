@@ -43,10 +43,12 @@ export function renderPanel(token: string, nonce: string): string {
     <h1>SSH 管理</h1>
     <div class="actions">
       <button id="refresh">刷新</button>
+      <button id="test-all" disabled>批量测试</button>
       <button id="add" class="primary">新增连接</button>
     </div>
   </header>
   <p id="notice" class="error" role="alert"></p>
+  <p id="test-summary" role="status" hidden></p>
   <p id="empty" hidden>暂无 SSH 配置。</p>
   <div class="table-wrap">
     <table id="profiles" hidden>
@@ -86,8 +88,12 @@ export function renderPanel(token: string, nonce: string): string {
   const notice = byId("notice");
   const fields = form.elements;
   const table = byId("profiles");
+  const testAll = byId("test-all");
+  const summary = byId("test-summary");
+  const rowTests = [];
   let editing;
   let busy = false;
+  let batchRunning = false;
 
   async function api(path, input) {
     const headers = { "X-Hua-Panel": token };
@@ -116,6 +122,9 @@ export function renderPanel(token: string, nonce: string): string {
   }
 
   function render(profiles) {
+    rowTests.length = 0;
+    testAll.disabled = profiles.length === 0;
+    summary.hidden = true;
     table.hidden = profiles.length === 0;
     byId("empty").hidden = profiles.length > 0;
     table.tBodies[0].replaceChildren();
@@ -139,21 +148,33 @@ export function renderPanel(token: string, nonce: string): string {
       actions.className = "actions";
       const result = document.createElement("small");
       result.setAttribute("role", "status");
-      actions.append(button("测试", async (event) => {
-        const control = event.currentTarget;
+      let pending;
+      const runTest = () => {
+        if (pending) return pending;
         control.disabled = true;
         result.className = "";
         result.textContent = "正在连接…";
-        try {
-          const data = await api("test", { name: profile.name });
+        pending = api("test", { name: profile.name }).then((data) => {
           result.textContent = "认证成功 · " + data.elapsedMs + " ms";
-        } catch (error) {
+          return true;
+        }, (error) => {
           result.className = "error";
           result.textContent = error.message;
-        } finally {
-          control.disabled = false;
+          return false;
+        }).finally(() => {
+          pending = undefined;
+          control.disabled = batchRunning;
+        });
+        return pending;
+      };
+      const control = button("测试", () => {
+        if (!busy) {
+          summary.hidden = true;
+          runTest();
         }
-      }), button("编辑", () => openEditor(profile)));
+      });
+      rowTests.push({ runTest, result, isPending: () => Boolean(pending) });
+      actions.append(control, button("编辑", () => openEditor(profile)));
       if (!profile.isDefault) {
         actions.append(button("设为默认", () => update("default", { name: profile.name })));
       }
@@ -163,6 +184,45 @@ export function renderPanel(token: string, nonce: string): string {
         }
       }));
       cell.append(actions, result);
+    }
+  }
+
+  async function runBatch() {
+    if (busy || rowTests.length === 0) return;
+    busy = batchRunning = true;
+    const controls = document.querySelectorAll("main button");
+    for (const control of controls) control.disabled = true;
+    let completed = 0;
+    let succeeded = 0;
+    const total = rowTests.length;
+    const report = () => {
+      summary.textContent = "已测试 " + completed + "/" + total +
+        " · 成功 " + succeeded + " · 失败 " + (completed - succeeded);
+    };
+    for (const test of rowTests) {
+      if (!test.isPending()) {
+        test.result.className = "";
+        test.result.textContent = "等待测试…";
+      }
+    }
+    summary.hidden = false;
+    report();
+    // 优先接管已发起的单项测试，避免重复建立 SSH 连接。
+    const queue = [...rowTests.filter((test) => test.isPending()), ...rowTests.filter((test) => !test.isPending())];
+    let next = 0;
+    async function worker() {
+      while (next < total) {
+        const test = queue[next++];
+        if (await test.runTest()) succeeded++;
+        completed++;
+        report();
+      }
+    }
+    try {
+      await Promise.all(Array.from({ length: Math.min(4, total) }, worker));
+    } finally {
+      busy = batchRunning = false;
+      for (const control of controls) control.disabled = false;
     }
   }
 
@@ -211,6 +271,7 @@ export function renderPanel(token: string, nonce: string): string {
   fields.clearPassphrase.addEventListener("change", syncAuth);
   byId("add").addEventListener("click", () => openEditor());
   byId("refresh").addEventListener("click", () => update("profiles"));
+  testAll.addEventListener("click", runBatch);
   byId("cancel").addEventListener("click", () => editor.close());
   editor.addEventListener("cancel", (event) => { if (busy) event.preventDefault(); });
   editor.addEventListener("close", () => form.reset());
