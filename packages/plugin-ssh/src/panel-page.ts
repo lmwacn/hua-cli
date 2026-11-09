@@ -6,56 +6,127 @@ export function renderPanel(token: string, nonce: string): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SSH 管理</title>
 <style nonce="${nonce}">
-  :root { color-scheme: light dark; font: 16px/1.5 system-ui, sans-serif; }
-  body { margin: 0; background: Canvas; color: CanvasText; }
-  main { max-width: 70rem; margin: auto; padding: clamp(1rem, 4vw, 3rem); }
-  header, .actions { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; }
-  header { justify-content: space-between; margin-bottom: 1.5rem; }
-  h1, h2 { margin: 0; }
+  :root {
+    color-scheme: light dark;
+    font: 15px/1.5 system-ui, sans-serif;
+    --canvas: light-dark(#f3f5f9, #10141c);
+    --surface: light-dark(#fff, #181e29);
+    --subtle: light-dark(#f6f8fc, #202837);
+    --line: light-dark(#e0e6ef, #30394a);
+    --ink: light-dark(#182338, #e9eef8);
+    --muted: light-dark(#53627a, #aebad0);
+    --accent: light-dark(#244bc2, #a5b7ff);
+    --accent-bg: light-dark(#edf1ff, #273457);
+    --success: light-dark(#136540, #8cd9ad);
+    --danger: light-dark(#a02437, #ff9ba7);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--canvas); color: var(--ink); }
+  main { max-width: 82rem; margin: auto; padding: clamp(1rem, 4vw, 3.5rem); }
+  header, .heading, .actions { display: flex; align-items: center; gap: .55rem; }
+  header { justify-content: space-between; flex-wrap: wrap; gap: 1.25rem; margin-bottom: 1.75rem; }
+  .heading { gap: .8rem; }
+  .brand {
+    display: grid; place-items: center; width: 2.9rem; height: 2.9rem; border-radius: .8rem;
+    background: var(--accent-bg); color: var(--accent);
+  }
+  .actions { flex-wrap: wrap; }
+  h1, h2, p { margin: 0; }
+  h1 { font-size: clamp(1.5rem, 4vw, 2rem); letter-spacing: -.025em; }
+  h2 { font-size: 1.25rem; }
   button, input, select { font: inherit; color: inherit; }
-  button { cursor: pointer; border: 1px solid GrayText; border-radius: .5rem; padding: .4rem .75rem; background: Canvas; }
-  button:disabled { cursor: default; opacity: .55; }
-  .primary { background: #1757c2; border-color: #1757c2; color: white; }
-  .table-wrap { overflow-x: auto; }
+  button {
+    cursor: pointer; border: 1px solid var(--line); border-radius: .55rem;
+    padding: .48rem .8rem; background: var(--surface); font-weight: 600;
+  }
+  button:hover { background: var(--subtle); }
+  button:disabled { cursor: default; opacity: .5; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .primary { background: #2d51cf; border-color: #2d51cf; color: #fff; }
+  .primary:hover { background: #2341ad; }
+  .secondary, .test { background: var(--accent-bg); color: var(--accent); border-color: transparent; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: .9rem; overflow: hidden; }
+  .panel-head {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    gap: .5rem; padding: .85rem 1.1rem;
+  }
+  .panel-head h2 { font-size: 1rem; }
+  .count, .tag { display: inline-block; border-radius: 1rem; background: var(--subtle); color: var(--muted); }
+  .count, .tag { padding: .12rem .55rem; font-size: .8rem; font-weight: 600; white-space: nowrap; }
+  .tag { margin-left: .5rem; background: var(--accent-bg); color: var(--accent); }
+  #test-summary { color: var(--accent); font-size: .9rem; font-variant-numeric: tabular-nums; }
+  #notice:not(:empty) { margin-bottom: 1rem; }
+  #empty { padding: 2.5rem 1rem; text-align: center; color: var(--muted); border-top: 1px solid var(--line); }
   table { width: 100%; border-collapse: collapse; text-align: left; }
-  th, td { padding: .8rem .65rem; border-bottom: 1px solid GrayText; }
-  th { white-space: nowrap; }
+  th, td { padding: .72rem 1.1rem; border-top: 1px solid var(--line); }
+  th { background: var(--subtle); color: var(--muted); font-size: .82rem; white-space: nowrap; }
   td { overflow-wrap: anywhere; }
-  td:first-child { font-weight: 600; }
-  small { font-size: .875rem; }
-  .tag { margin-left: .5rem; font-weight: 400; white-space: nowrap; }
-  dialog { width: min(30rem, calc(100% - 4rem)); padding: 1.25rem; border: 1px solid GrayText; border-radius: .75rem; }
-  dialog::backdrop { background: rgb(0 0 0 / 45%); }
-  form { display: grid; gap: .85rem; margin-top: 1rem; }
-  label { display: grid; gap: .25rem; }
-  label[hidden], div[hidden] { display: none; }
-  input, select { min-width: 0; background: Canvas; padding: .4rem; border: 1px solid GrayText; border-radius: .35rem; }
-  input[type=checkbox] { margin: 0; }
+  td:first-child { font-weight: 650; }
+  tbody tr:hover { background: var(--subtle); }
+  .address { font: .88rem/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; }
+  .auth, .status { color: var(--muted); font-size: .85rem; }
+  .status { max-width: 15rem; }
+  .success { color: var(--success); }
+  .error { color: var(--danger); }
+  .row-actions { gap: .25rem; }
+  .row-actions button { font-size: .84rem; padding: .34rem .5rem; border-color: transparent; }
+  .row-actions button:not(.test) { background: transparent; }
+  .row-actions button:hover { border-color: var(--line); }
+  .row-actions button:last-child:hover { color: var(--danger); }
+  small { font-size: .85rem; color: var(--muted); }
+  dialog {
+    width: min(31rem, calc(100% - 2rem)); max-height: calc(100% - 2rem);
+    padding: clamp(1rem, 4vw, 1.65rem); border: 1px solid var(--line); border-radius: .9rem;
+    background: var(--surface); color: var(--ink); box-shadow: 0 20px 60px #10141c40;
+  }
+  dialog::backdrop { background: #0b112263; }
+  form { display: grid; gap: .9rem; margin-top: 1.15rem; }
+  label { display: grid; gap: .3rem; font-size: .88rem; font-weight: 600; }
+  label small { font-weight: 400; }
+  input, select { width: 100%; min-width: 0; background: var(--canvas); padding: .52rem .65rem; border: 1px solid var(--line); border-radius: .45rem; }
+  input[type=checkbox] { width: auto; margin: 0; }
   .check { display: flex; align-items: center; gap: .5rem; }
   .pair { display: grid; grid-template-columns: 2fr 1fr; gap: .75rem; }
-  .error { color: light-dark(#a42020, #ff9595); }
-  [role=alert]:empty { margin: 0; }
+  form .actions { justify-content: flex-end; }
+  [role=alert]:empty { display: none; }
+  @media (max-width: 52rem) {
+    table, tbody { display: block; }
+    thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+    tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .4rem .8rem; padding: .9rem 1.1rem; border-top: 1px solid var(--line); }
+    td { display: block; padding: 0; border: 0; }
+    .auth { grid-row: 1; grid-column: 2; }
+    .address, .status, tbody td:last-child { grid-column: 1 / -1; }
+    .status { max-width: none; }
+    .row-actions button { padding: .44rem .6rem; }
+  }
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1>SSH 管理</h1>
+    <div class="heading">
+      <span class="brand" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4.5" width="19" height="15" rx="3"/><path d="m6.5 9 3 3-3 3m6 0h4.5"/></svg></span>
+      <h1>SSH 管理</h1>
+    </div>
     <div class="actions">
       <button id="refresh">刷新</button>
-      <button id="test-all" disabled>批量测试</button>
+      <button id="test-all" class="secondary" disabled>批量测试</button>
       <button id="add" class="primary">新增连接</button>
     </div>
   </header>
   <p id="notice" class="error" role="alert"></p>
-  <p id="test-summary" role="status" hidden></p>
-  <p id="empty" hidden>暂无 SSH 配置。</p>
-  <div class="table-wrap">
-    <table id="profiles" hidden>
-      <thead><tr><th>名称</th><th>连接地址</th><th>认证</th><th>操作</th></tr></thead>
-      <tbody></tbody>
+  <section class="panel" aria-labelledby="connections">
+    <div class="panel-head">
+      <div class="actions"><h2 id="connections">连接列表</h2><span id="connection-count" class="count" hidden></span></div>
+      <p id="test-summary" role="status" hidden></p>
+    </div>
+    <p id="empty" hidden>暂无 SSH 配置。</p>
+    <table id="profiles" role="table" aria-labelledby="connections" hidden>
+      <thead role="rowgroup"><tr role="row"><th scope="col">名称</th><th scope="col">连接地址</th><th scope="col">认证</th><th scope="col">测试状态</th><th scope="col">操作</th></tr></thead>
+      <tbody role="rowgroup"></tbody>
     </table>
-  </div>
+  </section>
 </main>
 <dialog id="editor" aria-labelledby="editor-title">
   <h2 id="editor-title"></h2>
@@ -123,6 +194,9 @@ export function renderPanel(token: string, nonce: string): string {
 
   function render(profiles) {
     rowTests.length = 0;
+    const count = byId("connection-count");
+    count.textContent = profiles.length + " 条";
+    count.hidden = false;
     testAll.disabled = profiles.length === 0;
     summary.hidden = true;
     table.hidden = profiles.length === 0;
@@ -130,6 +204,7 @@ export function renderPanel(token: string, nonce: string): string {
     table.tBodies[0].replaceChildren();
     for (const profile of profiles) {
       const row = table.tBodies[0].insertRow();
+      row.setAttribute("role", "row");
       const nameCell = row.insertCell();
       const name = document.createElement("span");
       name.textContent = profile.name;
@@ -141,13 +216,22 @@ export function renderPanel(token: string, nonce: string): string {
         nameCell.append(tag);
       }
       const host = profile.host.includes(":") ? "[" + profile.host + "]" : profile.host;
-      row.insertCell().textContent = profile.username + "@" + host + ":" + profile.port;
-      row.insertCell().textContent = profile.authMethod === "key" ? "私钥" : "密码";
-      const cell = row.insertCell();
-      const actions = document.createElement("div");
-      actions.className = "actions";
-      const result = document.createElement("small");
+      const address = row.insertCell();
+      address.className = "address";
+      address.textContent = profile.username + "@" + host + ":" + profile.port;
+      const auth = row.insertCell();
+      auth.className = "auth";
+      auth.textContent = profile.authMethod === "key" ? "私钥" : "密码";
+      const status = row.insertCell();
+      status.className = "status";
+      const result = document.createElement("span");
+      result.textContent = "未测试";
       result.setAttribute("role", "status");
+      status.append(result);
+      const cell = row.insertCell();
+      for (const item of row.cells) item.setAttribute("role", "cell");
+      const actions = document.createElement("div");
+      actions.className = "actions row-actions";
       let pending;
       const runTest = () => {
         if (pending) return pending;
@@ -155,6 +239,7 @@ export function renderPanel(token: string, nonce: string): string {
         result.className = "";
         result.textContent = "正在连接…";
         pending = api("test", { name: profile.name }).then((data) => {
+          result.className = "success";
           result.textContent = "认证成功 · " + data.elapsedMs + " ms";
           return true;
         }, (error) => {
@@ -173,6 +258,7 @@ export function renderPanel(token: string, nonce: string): string {
           runTest();
         }
       });
+      control.className = "test";
       rowTests.push({ runTest, result, isPending: () => Boolean(pending) });
       actions.append(control, button("编辑", () => openEditor(profile)));
       if (!profile.isDefault) {
@@ -183,7 +269,7 @@ export function renderPanel(token: string, nonce: string): string {
           update("remove", { name: profile.name });
         }
       }));
-      cell.append(actions, result);
+      cell.append(actions);
     }
   }
 
