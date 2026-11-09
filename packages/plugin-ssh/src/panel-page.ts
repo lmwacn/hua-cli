@@ -159,7 +159,8 @@ export function renderPanel(token: string, nonce: string): string {
   const cards = byId("profiles");
   const testAll = byId("test-all");
   const summary = byId("test-summary");
-  const rowTests = [];
+  let entries = new Map();
+  let batch = [];
   let editing;
   let busy = false;
   let batchRunning = false;
@@ -191,133 +192,157 @@ export function renderPanel(token: string, nonce: string): string {
   }
 
   function render(profiles) {
-    rowTests.length = 0;
     const count = byId("connection-count");
     count.textContent = profiles.length + " 条";
     count.hidden = false;
-    testAll.disabled = profiles.length === 0;
-    summary.hidden = true;
     cards.hidden = profiles.length === 0;
     byId("empty").hidden = profiles.length > 0;
-    cards.replaceChildren();
-    for (const profile of profiles) {
-      const card = document.createElement("li");
-      card.className = "profile";
-      const heading = document.createElement("div");
-      heading.className = "profile-head";
-      const name = document.createElement("h3");
-      name.textContent = profile.name;
-      heading.append(name);
-      if (profile.isDefault) {
-        const tag = document.createElement("span");
-        tag.className = "tag";
-        tag.textContent = "默认";
-        heading.append(tag);
+    const versions = new Map(profiles.map((profile) => [profile.name, profile.version]));
+    for (const [name, entry] of entries) {
+      if (entry.version !== versions.get(name)) {
+        entry.card.remove();
+        entries.delete(name);
       }
-      const host = profile.host.includes(":") ? "[" + profile.host + "]" : profile.host;
-      const address = document.createElement("p");
-      address.className = "address";
-      address.textContent = profile.username + "@" + host + ":" + profile.port;
-      const meta = document.createElement("div");
-      meta.className = "profile-meta";
-      const auth = document.createElement("span");
-      auth.className = "auth";
-      auth.textContent = profile.authMethod === "key" ? "私钥" : "密码";
-      const result = document.createElement("span");
-      result.className = "status";
-      result.textContent = "未测试";
-      result.setAttribute("role", "status");
-      const failure = document.createElement("details");
-      failure.className = "failure";
-      failure.hidden = true;
-      const failureLabel = document.createElement("summary");
-      failureLabel.textContent = "查看原因";
-      const failureMessage = document.createElement("p");
-      failure.append(failureLabel, failureMessage);
-      meta.append(result, failure, auth);
-      const actions = document.createElement("div");
-      actions.className = "actions row-actions";
-      const showStatus = (message, tone = "", reason = "") => {
-        result.className = ("status " + tone).trim();
-        result.textContent = message;
-        failure.open = false;
-        failure.hidden = !reason;
-        failureMessage.textContent = reason;
-      };
-      let pending;
-      const runTest = () => {
-        if (pending) return pending;
-        control.disabled = true;
-        showStatus("正在连接…");
-        pending = api("test", { name: profile.name }).then((data) => {
-          showStatus("认证成功 · " + data.elapsedMs + " ms", "success");
-          return true;
-        }, (error) => {
-          showStatus("测试失败", "error", error.message);
-          return false;
-        }).finally(() => {
-          pending = undefined;
-          control.disabled = batchRunning;
-        });
-        return pending;
-      };
-      const control = button("测试", () => {
-        if (!busy) {
-          summary.hidden = true;
-          runTest();
-        }
-      });
-      control.className = "test";
-      rowTests.push({ runTest, showStatus, isPending: () => Boolean(pending) });
-      actions.append(control, button("编辑", () => openEditor(profile)));
-      if (!profile.isDefault) {
-        actions.append(button("设为默认", () => update("default", { name: profile.name })));
-      }
-      actions.append(button("删除", () => {
-        if (!busy && confirm("删除 SSH 配置「" + profile.name + "」？")) {
-          update("remove", { name: profile.name });
-        }
-      }));
-      card.append(heading, address, meta, actions);
-      cards.append(card);
     }
+    const orderedEntries = new Map();
+    profiles.forEach((profile, index) => {
+      const entry = entries.get(profile.name) ?? createCard(profile);
+      orderedEntries.set(profile.name, entry);
+      entry.setDefault(profile.isDefault);
+      if (cards.children[index] !== entry.card) {
+        cards.insertBefore(entry.card, cards.children[index] ?? null);
+      }
+    });
+    entries = orderedEntries;
+    testAll.disabled = batchRunning || entries.size === 0;
+    if (!summary.hidden) reportBatch();
+  }
+
+  function createCard(profile) {
+    const card = document.createElement("li");
+    card.className = "profile";
+    const heading = document.createElement("div");
+    heading.className = "profile-head";
+    const name = document.createElement("h3");
+    name.textContent = profile.name;
+    heading.append(name);
+    const tag = document.createElement("span");
+    tag.className = "tag";
+    tag.textContent = "默认";
+    heading.append(tag);
+    const host = profile.host.includes(":") ? "[" + profile.host + "]" : profile.host;
+    const address = document.createElement("p");
+    address.className = "address";
+    address.textContent = profile.username + "@" + host + ":" + profile.port;
+    const meta = document.createElement("div");
+    meta.className = "profile-meta";
+    const auth = document.createElement("span");
+    auth.className = "auth";
+    auth.textContent = profile.authMethod === "key" ? "私钥" : "密码";
+    const result = document.createElement("span");
+    result.className = "status";
+    result.textContent = "未测试";
+    result.setAttribute("role", "status");
+    const failure = document.createElement("details");
+    failure.className = "failure";
+    failure.hidden = true;
+    const failureLabel = document.createElement("summary");
+    failureLabel.textContent = "查看原因";
+    const failureMessage = document.createElement("p");
+    failure.append(failureLabel, failureMessage);
+    meta.append(result, failure, auth);
+    const actions = document.createElement("div");
+    actions.className = "actions row-actions";
+    const showStatus = (message, tone = "", reason = "") => {
+      result.className = ("status " + tone).trim();
+      result.textContent = message;
+      failure.open = false;
+      failure.hidden = !reason;
+      failureMessage.textContent = reason;
+    };
+    let pending;
+    const runTest = () => {
+      if (pending) return pending;
+      control.disabled = true;
+      showStatus("正在连接…");
+      pending = api("test", { name: profile.name, version: profile.version }).then((data) => {
+        showStatus("认证成功 · " + data.elapsedMs + " ms", "success");
+        return true;
+      }, (error) => {
+        showStatus("测试失败", "error", error.message);
+        return false;
+      }).finally(() => {
+        pending = undefined;
+        control.disabled = false;
+      });
+      return pending;
+    };
+    const control = button("测试", () => {
+      if (!batchRunning) summary.hidden = true;
+      runTest();
+    });
+    control.className = "test";
+    const makeDefault = button("设为默认", () => update("default", { name: profile.name }));
+    actions.append(control, button("编辑", () => openEditor(profile)), makeDefault);
+    actions.append(button("删除", () => {
+      if (!busy && confirm("删除 SSH 配置「" + profile.name + "」？")) {
+        update("remove", { name: profile.name });
+      }
+    }));
+    card.append(heading, address, meta, actions);
+    return {
+      card, runTest, version: profile.version, name: profile.name,
+      isPending: () => Boolean(pending),
+      queueTest() {
+        if (pending) return;
+        control.disabled = true;
+        showStatus("等待测试…");
+      },
+      setDefault(isDefault) {
+        tag.hidden = !isDefault;
+        makeDefault.hidden = isDefault;
+      },
+    };
+  }
+
+  function reportBatch() {
+    let skipped = 0;
+    let succeeded = 0;
+    let failed = 0;
+    for (const item of batch) {
+      if (entries.get(item.entry.name) !== item.entry) skipped++;
+      else if (item.passed === true) succeeded++;
+      else if (item.passed === false) failed++;
+    }
+    summary.textContent = "已测试 " + (succeeded + failed) + "/" + (batch.length - skipped) +
+      " · 成功 " + succeeded + " · 失败 " + failed + (skipped ? " · 跳过 " + skipped : "");
   }
 
   async function runBatch() {
-    if (busy || rowTests.length === 0) return;
-    busy = batchRunning = true;
-    const controls = document.querySelectorAll("main button");
-    for (const control of controls) control.disabled = true;
-    let completed = 0;
-    let succeeded = 0;
-    const total = rowTests.length;
-    const report = () => {
-      summary.textContent = "已测试 " + completed + "/" + total +
-        " · 成功 " + succeeded + " · 失败 " + (completed - succeeded);
-    };
-    for (const test of rowTests) {
-      if (!test.isPending()) {
-        test.showStatus("等待测试…");
-      }
-    }
-    summary.hidden = false;
-    report();
+    if (batchRunning || entries.size === 0) return;
+    batchRunning = testAll.disabled = true;
     // 优先接管已发起的单项测试，避免重复建立 SSH 连接。
-    const queue = [...rowTests.filter((test) => test.isPending()), ...rowTests.filter((test) => !test.isPending())];
+    const snapshot = [...entries.values()];
+    batch = [...snapshot.filter((entry) => entry.isPending()), ...snapshot.filter((entry) => !entry.isPending())]
+      .map((entry) => ({ entry }));
+    for (const { entry } of batch) entry.queueTest();
+    summary.hidden = false;
+    reportBatch();
+
     let next = 0;
     async function worker() {
-      while (next < total) {
-        const test = queue[next++];
-        if (await test.runTest()) succeeded++;
-        completed++;
-        report();
+      while (next < batch.length) {
+        const item = batch[next++];
+        if (entries.get(item.entry.name) !== item.entry) continue;
+        item.passed = await item.entry.runTest();
+        reportBatch();
       }
     }
     try {
-      await Promise.all(Array.from({ length: Math.min(4, total) }, worker));
+      await Promise.all(Array.from({ length: Math.min(4, batch.length) }, worker));
     } finally {
-      busy = batchRunning = false;
-      for (const control of controls) control.disabled = false;
+      batchRunning = false;
+      testAll.disabled = entries.size === 0;
     }
   }
 

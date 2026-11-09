@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { testConnection } from "./client";
 import { renderPanel } from "./panel-page";
@@ -66,6 +66,13 @@ function buildProfile(input: Record<string, unknown>, previous?: SshProfile): Ss
   throw new PanelError(400, "请选择认证方式。");
 }
 
+// 使用服务端密钥识别凭据变化，浏览器只接收不可自行计算的版本号。
+const profileVersionKey = randomBytes(32);
+
+function profileVersion(profile: SshProfile): string {
+  return createHmac("sha256", profileVersionKey).update(JSON.stringify(profile)).digest("hex");
+}
+
 function publicProfiles() {
   return listProfiles().map(({ name, isDefault, profile }) => ({
     name,
@@ -75,6 +82,7 @@ function publicProfiles() {
     username: profile.username,
     authMethod: profile.authMethod,
     privateKeyPath: profile.privateKeyPath,
+    version: profileVersion(profile),
     hasPassword: Boolean(profile.password),
     hasPassphrase: Boolean(profile.passphrase),
   }));
@@ -109,6 +117,9 @@ async function handleAction(request: IncomingMessage, response: ServerResponse):
       if (!removeProfile(name)) throw new PanelError(404, "配置已不存在，请刷新列表。");
       break;
     case "/api/test": {
+      if (input.version !== profileVersion(existing!)) {
+        throw new PanelError(409, "配置已变更，请刷新列表后重新测试。");
+      }
       const start = performance.now();
       try {
         await testConnection(existing!);
