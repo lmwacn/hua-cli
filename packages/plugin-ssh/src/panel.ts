@@ -1,9 +1,17 @@
 import { createHmac, randomBytes } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { testConnection } from "./client";
 import { renderPanel } from "./panel-page";
+import { registerPanelTerminal } from "./panel-terminal";
 import { listProfiles, removeProfile, savePanelProfile, setDefaultProfile } from "./profile-store";
 import { SshProfile } from "./types";
+
+const terminalAssets = new Map([
+  ["/terminal/xterm.js", { file: require.resolve("@xterm/xterm"), type: "text/javascript" }],
+  ["/terminal/fit.js", { file: require.resolve("@xterm/addon-fit"), type: "text/javascript" }],
+  ["/terminal/xterm.css", { file: require.resolve("@xterm/xterm/css/xterm.css"), type: "text/css" }],
+]);
 
 class PanelError extends Error {
   constructor(readonly status: number, message: string) {
@@ -152,9 +160,17 @@ export async function startSshPanel(): Promise<string> {
     if (request.method === "GET" && request.url === "/") {
       response.writeHead(200, {
         "Content-Type": "text/html; charset=utf-8",
-        "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`,
+        "Content-Security-Policy": `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://${host}; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`,
       });
       response.end(renderPanel(token, nonce));
+      return;
+    }
+    const asset = request.method === "GET" ? terminalAssets.get(request.url ?? "") : undefined;
+    if (asset) {
+      response.setHeader("Content-Type", asset.type);
+      createReadStream(asset.file)
+        .on("error", () => response.destroy())
+        .pipe(response);
       return;
     }
 
@@ -179,6 +195,12 @@ export async function startSshPanel(): Promise<string> {
         sendJson(response, 500, { error: "无法读取或保存 SSH 配置，请检查 ~/.hua/ssh.json。" });
       }
     }
+  });
+  registerPanelTerminal(server, () => host, token, (name, version) => {
+    const profile = listProfiles().find((item) => item.name === name)?.profile;
+    if (!profile) throw new Error("配置已不存在，请刷新列表。");
+    if (version !== profileVersion(profile)) throw new Error("配置已变更，请刷新列表后重新连接。");
+    return profile;
   });
 
   return new Promise((resolve, reject) => {

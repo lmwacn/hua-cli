@@ -5,6 +5,7 @@ export function renderPanel(token: string, nonce: string): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SSH 管理</title>
+<link rel="stylesheet" href="/terminal/xterm.css">
 <style nonce="${nonce}">
   :root {
     color-scheme: light dark;
@@ -92,6 +93,16 @@ export function renderPanel(token: string, nonce: string): string {
     background: var(--surface); color: var(--ink); box-shadow: 0 20px 60px #10141c40;
   }
   dialog::backdrop { background: #0b112263; }
+  .terminal-dialog {
+    width: min(76rem, calc(100% - 1rem)); height: min(48rem, calc(100% - 1rem));
+    padding: .85rem; background: #121824; color: #e7edf8; border-color: #30394a;
+  }
+  .terminal-dialog[open] { display: flex; flex-direction: column; gap: .65rem; }
+  .terminal-head { display: flex; justify-content: space-between; align-items: center; gap: .75rem; }
+  .terminal-head h2 { overflow-wrap: anywhere; }
+  .terminal-head button { background: #242d3e; border-color: #46546a; color: inherit; white-space: nowrap; }
+  #terminal-status { font-size: .86rem; color: #b7c3d9; overflow-wrap: anywhere; }
+  #terminal-screen { flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
   form { display: grid; gap: .9rem; margin-top: 1.15rem; }
   label { display: grid; gap: .3rem; font-size: .88rem; font-weight: 600; }
   label small { font-weight: 400; }
@@ -149,6 +160,16 @@ export function renderPanel(token: string, nonce: string): string {
     </div>
   </form>
 </dialog>
+<dialog id="terminal-dialog" class="terminal-dialog" aria-labelledby="terminal-title">
+  <div class="terminal-head">
+    <h2 id="terminal-title"></h2>
+    <button id="terminal-close" type="button">关闭终端</button>
+  </div>
+  <p id="terminal-status" role="status"></p>
+  <div id="terminal-screen"></div>
+</dialog>
+<script nonce="${nonce}" src="/terminal/xterm.js"></script>
+<script nonce="${nonce}" src="/terminal/fit.js"></script>
 <script nonce="${nonce}">
   const token = "${token}";
   const byId = (id) => document.getElementById(id);
@@ -164,6 +185,97 @@ export function renderPanel(token: string, nonce: string): string {
   let editing;
   let busy = false;
   let batchRunning = false;
+
+  const terminalDialog = byId("terminal-dialog");
+  const terminalStatus = byId("terminal-status");
+  const terminalScreen = byId("terminal-screen");
+  let closeTerminal;
+
+  function openTerminal(profile) {
+    if (terminalDialog.open) return;
+    byId("terminal-title").textContent = profile.name;
+    terminalStatus.textContent = "正在连接…";
+    terminalDialog.showModal();
+    if (!window.Terminal || !window.FitAddon) {
+      terminalStatus.textContent = "终端组件加载失败，请重新加载面板。";
+      return;
+    }
+
+    const terminal = new Terminal({
+      cursorBlink: true,
+      disableStdin: true,
+      fontSize: 14,
+      theme: { background: "#121824", foreground: "#e7edf8" },
+    });
+    const fit = new FitAddon.FitAddon();
+    terminal.loadAddon(fit);
+    terminal.open(terminalScreen);
+    fit.fit();
+    const socket = new WebSocket("ws://" + location.host + "/terminal", ["hua-ssh", token]);
+    socket.binaryType = "arraybuffer";
+    let ready = false;
+    let ended = false;
+    let disposed = false;
+
+    function sendSize(type) {
+      socket.send(JSON.stringify({
+        type, name: profile.name, version: profile.version,
+        cols: Math.min(500, terminal.cols), rows: Math.min(300, terminal.rows),
+      }));
+    }
+    const resize = new ResizeObserver(() => fit.fit());
+    resize.observe(terminalScreen);
+    terminal.onResize(() => {
+      if (ready && socket.readyState === WebSocket.OPEN) sendSize("resize");
+    });
+    terminal.onData((data) => {
+      if (!ready || socket.readyState !== WebSocket.OPEN) return;
+      const bytes = new TextEncoder().encode(data);
+      for (let offset = 0; offset < bytes.length; offset += 65536) {
+        socket.send(bytes.subarray(offset, offset + 65536));
+      }
+    });
+    socket.addEventListener("open", () => sendSize("start"));
+    socket.addEventListener("message", (event) => {
+      if (disposed) return;
+      if (event.data instanceof ArrayBuffer) {
+        terminal.write(new Uint8Array(event.data));
+        return;
+      }
+      const status = JSON.parse(event.data);
+      if (status.state === "ready") {
+        ready = true;
+        terminal.options.disableStdin = false;
+        terminalStatus.textContent = profile.username + "@" + profile.host + " · 已连接";
+        sendSize("resize");
+        terminal.focus();
+      } else {
+        ended = true;
+        terminalStatus.textContent = status.message || "SSH 会话已结束";
+      }
+    });
+    socket.addEventListener("close", () => {
+      if (disposed) return;
+      terminal.options.disableStdin = true;
+      if (!ended) terminalStatus.textContent = ready ? "SSH 会话已断开" : "无法打开 SSH 终端";
+    });
+    closeTerminal = () => {
+      disposed = true;
+      resize.disconnect();
+      socket.close();
+      terminal.dispose();
+      terminalScreen.replaceChildren();
+    };
+  }
+
+  byId("terminal-close").addEventListener("click", () => terminalDialog.close());
+  terminalDialog.addEventListener("cancel", (event) => {
+    if (terminalScreen.contains(document.activeElement)) event.preventDefault();
+  });
+  terminalDialog.addEventListener("close", () => {
+    closeTerminal?.();
+    closeTerminal = undefined;
+  });
 
   async function api(path, input) {
     const headers = { "X-Hua-Panel": token };
@@ -283,7 +395,7 @@ export function renderPanel(token: string, nonce: string): string {
     });
     control.className = "test";
     const makeDefault = button("设为默认", () => update("default", { name: profile.name }));
-    actions.append(control, button("编辑", () => openEditor(profile)), makeDefault);
+    actions.append(button("终端", () => openTerminal(profile)), control, button("编辑", () => openEditor(profile)), makeDefault);
     actions.append(button("删除", () => {
       if (!busy && confirm("删除 SSH 配置「" + profile.name + "」？")) {
         update("remove", { name: profile.name });

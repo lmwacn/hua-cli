@@ -123,6 +123,8 @@ hua http post /api/users --data '{"name":"test"}' -H "Content-Type: application/
 
 运行 `hua ssh panel` 后，在浏览器打开终端显示的本机地址。面板可新增、编辑、删除 SSH 配置和设置默认连接。「测试」验证单条连接，「批量测试」验证全部连接并显示进度和结果。编辑密码或私钥口令时，留空会保留原值。
 
+点击连接卡片上的「终端」可打开交互式 SSH 会话。执行 `exit` 或点击「关闭终端」可断开连接。
+
 面板与 CLI 共用 `~/.hua/ssh.json`，只在命令运行期间监听本机地址。按 `Ctrl+C` 关闭。
 
 ```bash
