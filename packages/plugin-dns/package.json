@@ -1,0 +1,16 @@
+{
+  "name": "@hua/plugin-dns",
+  "version": "0.1.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b",
+    "test": "node --test test/*.test.cjs"
+  },
+  "dependencies": {
+    "@hua/plugin-sdk": "0.1.0"
+  }
+}

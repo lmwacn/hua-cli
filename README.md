@@ -266,3 +266,7 @@ export const helloPlugin = definePlugin({
 - HTTP 插件：增加响应格式化、历史记录等功能
 - SQL 插件：支持更多输出格式（json/csv）、专用脚本文件参数
 - 通用：项目级配置覆盖、环境变量支持
+
+## DNS、证书与部署任务
+
+新增 `hua dns` 插件，通过普通 HTTP API 管理聚合 DNS 系统。配置与操作示例见 [DNS 插件](packages/plugin-dns/README.md)。

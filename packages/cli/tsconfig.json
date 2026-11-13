@@ -13,7 +13,8 @@
     { "path": "../plugin-weixin" },
     { "path": "../plugin-tts" },
     { "path": "../plugin-qiniu" },
-    { "path": "../plugin-gmail" }
+    { "path": "../plugin-gmail" },
+    { "path": "../plugin-dns" }
   ],
   "include": [
     "src/**/*.ts"

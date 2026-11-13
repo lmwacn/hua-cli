@@ -8,6 +8,8 @@ import { ttsPlugin } from "@hua/plugin-tts";
 import { qiniuPlugin } from "@hua/plugin-qiniu";
 import { gmailPlugin } from "@hua/plugin-gmail";
 
+import { dnsPlugin } from "@hua/plugin-dns";
+
 async function main(): Promise<void> {
   const app = new HuaCliApp();
   app.registerPlugin(sqlPlugin);
@@ -17,6 +19,7 @@ async function main(): Promise<void> {
   app.registerPlugin(ttsPlugin);
   app.registerPlugin(qiniuPlugin);
   app.registerPlugin(gmailPlugin);
+  app.registerPlugin(dnsPlugin);
   await app.run(process.argv);
 }
 
