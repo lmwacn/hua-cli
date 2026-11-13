@@ -1,6 +1,6 @@
 ---
 name: hua-cli
-description: 使用 hua-cli 查询 MySQL / PostgreSQL、执行远程命令和文件传输、管理七牛云对象与 CDN，以及使用阿里云百炼生成配音和声景、创建和管理克隆音色、搜索和处理 Gmail 邮件。用于这些操作及其账号配置，不用于普通 SQL 编写或无关代码修改。
+description: 使用 hua-cli 查询 MySQL / PostgreSQL、执行远程命令和文件传输、管理七牛云对象与 CDN、DNS 解析、SSL 证书及证书部署任务，以及使用阿里云百炼生成配音和声景、创建和管理克隆音色、搜索和处理 Gmail 邮件。用于这些操作及其账号配置，不用于普通 SQL 编写或无关代码修改。
 ---
 
 # hua-cli
@@ -11,6 +11,7 @@ description: 使用 hua-cli 查询 MySQL / PostgreSQL、执行远程命令和文
 
 - MySQL / PostgreSQL 查询、数据变更或数据库连接管理：[references/sql.md](references/sql.md)。
 - SSH 远程执行、文件传输或服务器部署：[references/ssh.md](references/ssh.md)。
+- DNS 解析、SSL 证书申请与自动续签、证书部署账户及任务：[references/dns.md](references/dns.md)。
 - 七牛云空间、对象、CDN 或凭证配置：[references/qiniu.md](references/qiniu.md)。
 - 百炼语音合成、声音克隆、TTS Next 配音与混合声景：[references/tts.md](references/tts.md)。
 - Gmail 邮件读写、附件下载或 OAuth 配置：[references/gmail.md](references/gmail.md)。

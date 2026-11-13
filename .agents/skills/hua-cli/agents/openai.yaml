@@ -1,4 +1,4 @@
 interface:
   display_name: "Hua CLI 工具"
-  short_description: "使用 hua 操作数据库、远程服务器、七牛云、百炼语音和 Gmail"
+  short_description: "使用 hua 管理数据库、服务器、DNS 与证书、七牛云、百炼语音和 Gmail"
   default_prompt: "使用 $hua-cli，选择当前任务对应的子命令并复用已有配置。"
