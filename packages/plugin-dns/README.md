@@ -55,6 +55,29 @@ hua dns record status -p production --domain-id 12 --recordid <RecordId> --statu
 
 `hua dns tools` 显示当前账号可用操作和完整参数说明。`hua dns call` 也可调用现有 MCP 注册表中其他已授权操作。
 
+## 查找与复用部署任务
+
+添加任务前先查找。`deploy find` 自动读取所有分页，显示任务 ID、账户主机、部署类型、站点列表、证书域名、启用状态和匹配依据；不输出完整配置或密钥。
+
+```bash
+# 域名匹配已部署站点或证书覆盖范围，支持一级通配符。
+hua dns deploy find --domain pan.example.com -p production
+# IP 匹配部署账户地址中的主机，不做 DNS 解析。
+hua dns deploy find --ip 192.0.2.10 -p production
+# 部署站点名称精确匹配；多个筛选条件取交集。
+hua dns deploy find --site pan.example.com --aid 2 -p production
+hua dns deploy find --domain pan.example.com --ip 192.0.2.10 -p production
+
+# 明确账户、证书、站点及实际访问域名后，确保自动部署任务存在。
+hua dns deploy ensure --aid 2 --oid 1 --site pan.example.com --domain pan.example.com -p production
+```
+
+`--domain` 命中通配符证书表示候选任务的证书可覆盖该域名，不代表该站点已部署。`matched_by` 中 `site_domain` / `site` 表示站点命中，`certificate_domain` 表示证书覆盖，`account_host` 表示账户主机命中。
+
+`ensure` 当前支持宝塔网站证书（部署类型 `0`）。先核对证书已签发、未过期、覆盖 `--domain` 且开启自动续签，再复用同账户、同证书、同部署类型的任务：已有站点返回 `unchanged`，追加站点返回 `reused`，完全没有候选时才创建并返回 `created`。追加时保留原站点和其他配置。多个候选需传 `--id`；停用任务、重复站点或其他证书冲突会报错，不自动另建任务。
+
+`ensure` 不立即执行部署，不自动重置原任务。首次安装仍需对返回的任务 ID 执行 `deploy process`；已完成任务需要重新执行时加 `--reset 1`。复用批量任务后执行会涉及其中全部站点。证书后续续签由服务器既有调度自动触发部署。
+
 ## 本地检查
 
 在 hua-cli 根目录运行：

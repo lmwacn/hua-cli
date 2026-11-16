@@ -3,6 +3,28 @@ import path from "node:path";
 import { definePlugin, HuaCommand, CommandContext } from "@hua/plugin-sdk";
 import { profiles, validateProfile } from "./profile-store";
 import { request, redact } from "./client";
+import { findTasks, ensureTask } from "./deploy";
+
+function deployCall(c: CommandContext) {
+  const resolved = profiles.resolveProfile(c.options.profile as string | undefined);
+  if (!resolved) throw new Error("找不到 DNS profile，请先执行 hua dns profile add");
+  return (tool: string, args: Record<string, unknown>) => request(resolved.profile, tool, args, Number(c.options.timeout || 30000));
+}
+function positiveId(c: CommandContext, field: string, required = false): number | undefined {
+  const value = c.options[field];
+  if (value === undefined && !required) return undefined;
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 1) throw new Error(`--${field} 必须为正整数`);
+  return number;
+}
+const deployOptions = [
+  { flags: "-p, --profile <name>", description: "DNS 站点配置" },
+  { flags: "--timeout <ms>", description: "单次请求超时毫秒；超时后先查询状态", defaultValue: "30000" },
+  { flags: "--domain <domain>", description: "证书覆盖域名或已部署的域名" },
+  { flags: "--site <site>", description: "部署站点名称（精确匹配）" },
+  { flags: "--aid <id>", description: "部署账户 ID" },
+  { flags: "--oid <id>", description: "证书订单 ID" },
+];
 
 export function parseData(input: string): Record<string, unknown> {
   const raw = input === "-" ? fs.readFileSync(0, "utf8") : input.startsWith("@") ? fs.readFileSync(input.slice(1), "utf8") : input;
@@ -60,6 +82,19 @@ export const dnsPlugin = definePlugin({ name: "dns", description: "聚合 DNS、
   ...resource(["record"], "record_query", "record_manage", { list: "list", add: "add", update: "update", delete: "delete", status: "set_status" }),
   ...resource(["cert"], "cert_order_query", "cert_order_manage", { list: "list", get: "get", add: "add", edit: "edit", process: "process", auto: "set_auto", reset: "reset", delete: "del", logs: "show_log" }),
   ...resource(["deploy"], "cert_deploy_query", "cert_deploy_manage", { list: "list", add: "add", edit: "edit", process: "process", active: "set_active", reset: "reset", delete: "del", logs: "show_log" }),
+  { parentPath: ["deploy"], name: "find", description: "按证书覆盖域名、账户IP或站点查找任务（多个条件取交集）", options: [...deployOptions,
+    { flags: "--ip <ip>", description: "部署账户地址中的主机/IP（不做 DNS 解析）" },
+  ], async action(c) {
+    c.log(JSON.stringify(await findTasks(deployCall(c), { domain: c.options.domain as string | undefined, ip: c.options.ip as string | undefined,
+      site: c.options.site as string | undefined, aid: positiveId(c, "aid"), oid: positiveId(c, "oid") }), null, 2));
+  } },
+  { parentPath: ["deploy"], name: "ensure", description: "确保宝塔网站部署任务存在，优先复用并补入站点（不立即执行部署）", options: [...deployOptions,
+    { flags: "--id <id>", description: "多个候选时指定复用任务 ID" },
+  ], async action(c) {
+    const aid = positiveId(c, "aid", true)!, oid = positiveId(c, "oid", true)!, id = positiveId(c, "id");
+    if (typeof c.options.site !== "string" || typeof c.options.domain !== "string" || !c.options.domain.trim()) throw new Error("必须指定 --site 和 --domain");
+    c.log(JSON.stringify(await ensureTask(deployCall(c), { aid, oid, id, site: c.options.site, domain: c.options.domain }), null, 2));
+  } },
   ...resource(["account", "dns"], "dns_account_query", "dns_account_manage", { list: "list", add: "add", edit: "edit", delete: "del" }),
   ...resource(["account", "cert"], "cert_account_query", "cert_account_manage", { list: "list", add: "add", edit: "edit", delete: "del" }, { deploy: 0 }),
   ...resource(["account", "deploy"], "cert_account_query", "cert_account_manage", { list: "list", add: "add", edit: "edit", delete: "del" }, { deploy: 1 }),
