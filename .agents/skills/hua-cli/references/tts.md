@@ -1,31 +1,76 @@
-# 百炼语音
+# 百炼语音合成与音频生成
 
-- `hua tts gen` 使用已有的 Qwen 或 CosyVoice 配置，默认读取 `~/.hua/tts.json`。具体参数见 `hua tts gen --help`。
-- `hua tts next` 用 `qwen-audio-3.1-tts-next` 根据文字描述生成单人干声，输入 `--text` 或 `--text-file`，用 `--style` 指定音色、语气及节奏。用 `--prompt` 或 `--prompt-file` 提交完整声景描述，可一次生成旁白、背景音乐和环境音。
-- `hua tts clone` 管理百炼克隆音色。先用 `list` 查名称，`status --voice <name>` 查部署状态，`audio --voice <name> --text-file <file>` 合成。新建用 `create`，恢复用 `discover` 和 `bind`，导入旧头像配置用 `import-avatar`。
+两类能力分别使用命令，所有实现统一为 TypeScript，需要 Node.js 18+，无需 Python。
+
+| 能力 | 命令 | 输入 | 模型 |
+| --- | --- | --- | --- |
+| 语音合成 | `hua tts synthesize` | 稿件、音色 ID、表达指令 | 默认 `qwen-audio-3.1-tts-flash`，另支持 CosyVoice 和旧 Qwen3 HTTP |
+| 音频生成 | `hua tts generate` | 场景提示词、可选参考音频 | `qwen-audio-3.1-tts-next` |
+| 克隆音色 | `hua tts clone` | 录音样本或已登记音色 | 创建默认 `cosyvoice-v3.5-plus`，支持绑定 Qwen-Audio/CosyVoice 合成模型 |
+
+## 配置与凭据
 
 ```bash
-hua tts next --text-file script.txt --style "年轻成年女性，自然普通话，声音清甜，像在和朋友聊天" --title "AI 讲解"
-hua tts next --prompt '清甜女声说：“我们先看 API 文档。”配低音量 lo-fi 音乐，开头有轻微键盘声。' --title "科技旁白"
-hua tts clone audio --voice da-tie-chui --text-file script.txt --title "AI 讲解"
-hua tts clone create --name my-voice --prefix myvoice --audio-file sample.wav --workspace-id <workspace-id>
+export DASHSCOPE_API_KEY=sk-xxx
+export SFM_WORKSPACE_ID=<workspace-id>
+hua tts config show
+hua tts config set --workspace-id <workspace-id> --region cn-beijing
 ```
 
-四种 Next 输入选项互斥。声景模式把完整提示词直接交给模型，输出 48 kHz 立体声混合音轨，并保存 `prompt.txt`。请在提示词里写清要逐字读出的台词、音乐音量和音效出现时机。纯配音模式输出 24 kHz 单声道，保存 `script.txt`。
+两类能力共用 `~/.hua/tts.json`；保存使用权限 `0600`。支持北京 `cn-beijing`、新加坡 `ap-southeast-1`，具体模型是否在该地域可用以百炼官方文档和账号权限为准。API Key 与业务空间必须属于相同地域。
 
-Next 和 clone 需要 Python 3.11+。默认复用北京地域注册表 `~/.hua-voice/voices.json` 及环境变量 `DASHSCOPE_API_KEY`、`~/.hua-voice/config.json` 或 `~/.hua-avatar/config.json`。本地凭据文件在 Unix 上须为 `0600`。可用 `--registry`、`--env-file` 指定替代文件。Next 可用 `--workspace-id` 指定业务空间。用 `hua tts clone doctor` 检查本地配置。
+Key 优先级：`--api-key`、指定环境变量、`DASHSCOPE_API_KEY`、配置中的 `apiKey`、旧凭据文件。旧凭据文件继续读取 `~/.hua-voice/config.json`、`~/.hua-avatar/config.json`，Unix 权限须为 `0600`；进程环境变量覆盖旧文件。缺少共用业务空间配置时，读取旧音色注册表的 `service.workspace_id`。
 
-凭据优先级从高到低为进程环境变量、`--env-file`、`~/.hua-voice/config.json`、`~/.hua-avatar/config.json`。切换业务空间时用独立注册表，避免混用不同空间的克隆音色。
+旧 `~/.hua/tts.json` 在读取时转换，不自动改写；执行 `config set` 后保存为 v2。旧 Qwen3 模型仍使用原 HTTP 接口。切换 provider 会同时切换模型和默认音色；自定义音色请显式传 `--voice`。CosyVoice v3.5 无系统音色，必须指定相应模型的复刻或设计音色。
 
-克隆需有用户授权的单人录音和明确的创建请求。建议使用 10–30 秒干净的单人录音。客户端支持 10 MiB 以内的 WAV、MP3、M4A 文件，或通过 `--audio-url` 提供 HTTPS URL。保留用户原始样本，创建与合成使用相同的绑定模型。
+## 语音合成
 
-新音色处于 `DEPLOYING` 时用 `status` 继续查询。创建提交前会写入 `submission_unknown` 占位，结果不明时不要重发创建或合成。有音色 ID 时先查询状态。缺少 ID 时，从第 0 页按创建时的前缀查询，并用创建时间和目标模型确认对应资源。确认后，将 ID 写入临时 JSON 再绑定已有占位。
+```bash
+hua tts synthesize --file script.txt --instructions "语气温柔、语速稍慢" -o speech.wav
+hua tts synthesize "你好" --provider cosyvoice --voice longanyang -o speech.wav
+hua tts synthesize "你好" --model cosyvoice-v3.5-plus --voice <voice-id> --format mp3 -o speech.mp3
+```
+
+位置文本与 `--file` 互斥。支持 `--language zh`、`--rate 0.8`、`--volume 50`、`--seed`、`--ssml`、`--sample-rate`。不同模型及音色对指令、SSML 的支持以官方文档为准。输出格式支持 WAV、MP3、PCM、Opus，扩展名须一致。旧 Qwen3 HTTP 仅支持默认 WAV，语言值使用 Chinese/English。
+
+## 音频生成
+
+```bash
+hua tts generate --file scene.txt -o scene.wav
+hua tts generate '@voice1 说：“我们出发吧。”@voice2 回答：“好啊。”背景有海浪声。' --reference person1.wav --reference person2.wav -o scene.wav
+hua tts generate --text-file script.txt --style "年轻女声，自然普通话" -o narration.wav
+```
+
+输入任选一种：位置提示词、`--file`/`--prompt-file`、`--prompt`、`--text`/`--text-file`。`--style` 用于单人稿件，会构造干声提示词；完整场景提示词直接提交。完整提示词上限 3000 字符。
+
+`--reference` 可重复最多三次，依次对应 `@voice1`、`@voice2`、`@voice3`。支持本地 WAV、MP3、OGG Opus 或公网 HTTP/HTTPS URL。单条参考音频须不超过 30 秒和 10 MB；客户端检查本地文件大小，时长与编码由服务端验证。参考音频通过 URL 或 Base64 提交，不使用 voice ID。
+
+默认 WAV、48 kHz、双声道；支持 MP3、PCM、`--channels 1`、`--rate`、`--volume`、`--seed`。不支持 Opus 输出。播客单次最多 240 秒，其他场景 120 秒。
+
+`--print-url` 只输出下载地址，不保存文件；`--json` 保存音频并打印 API 响应。下载失败会提供恢复 URL，不自动重发合成。URL 含临时访问凭证，不应写入共享日志。两类命令均不自动拆稿或重试计费请求。
+
+`gen`、`next` 分别保留为 `synthesize`、`generate` 的别名。旧 Next 的 `--title`、`--output-root`、`--registry`、`--env-file` 已移除，请改用共用配置和 `-o`。普通合成/生成默认保存当前目录的 `speech.<格式>` / `generated-audio.<格式>`，覆盖前先完整下载并检查文件头。
+
+## 克隆音色
+
+```bash
+hua tts clone list
+hua tts clone doctor
+hua tts clone create --name my-voice --prefix myvoice --audio-file sample.wav --workspace-id <workspace-id>
+hua tts clone status --voice my-voice
+hua tts clone audio --voice my-voice --text-file script.txt --title "讲解"
+```
+
+保留 `~/.hua-voice/voices.json` 注册表格式、旧音色名称和别名；使用 `--registry` 隔离不同业务空间。创建需有用户授权的单人录音和明确创建请求。样本支持非空且不超过 10 MiB 的本地 WAV、MP3、M4A，或 `--audio-url` HTTPS URL。创建与合成使用相同绑定模型。
+
+创建前写入 `submission_unknown` 占位；结果不明时不重发。返回 ID 后先保存，再查询部署状态。音色处于 `DEPLOYING` 时用 `status` 继续查。
 
 ```bash
 hua tts clone discover --prefix myvoice --page 0
-hua tts clone bind --name my-voice --source-json /path/recovered.json
+hua tts clone bind --name my-voice --source-json recovered.json
+hua tts clone import-avatar /path/old-config.toml
 ```
 
-查询结果保存在注册表旁的 `discovered-*.json`。满 100 条时查下一页。绑定输入为 `{"voice_id":"..."}`，已有绑定不能覆盖。无法确认对应资源时保留占位，等核实后再绑定。
+远程查询保存到注册表旁 `discovered-*.json`；满 100 条查下一页。核对前缀、创建时间、模型后，将 ID 写入 `{"voice_id":"..."}` 再绑定；已有绑定不覆盖。导入旧 TOML 仅提取百炼音色，不导入头像等资源。克隆配音保留 `Voice/<标题>-<唯一后缀>/` 下的 `script.txt`、音频及 `manifest.json`，失败状态保留为 `failed_or_unknown`。
 
-两种配音默认写入 `Voice/<标题>-<唯一后缀>/`，保存原文、状态和 WAV，可用 `--format mp3` 或 `--output-root` 改输出。Next 的风格和稿件合计受 3000 字符提示词限制。完成后用绝对路径嵌入音频并提供文件链接。
+官方参考：[语音合成](https://help.aliyun.com/zh/model-studio/tts-model)、[音频生成 API](https://help.aliyun.com/zh/model-studio/audio-generation-api)、[音色复刻 API](https://help.aliyun.com/zh/model-studio/voice-clone-design-http-api)。

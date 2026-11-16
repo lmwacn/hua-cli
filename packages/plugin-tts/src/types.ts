@@ -1,36 +1,32 @@
-export type TtsProvider = "qwen" | "cosyvoice";
+export type TtsProvider = "qwen-audio" | "qwen" | "cosyvoice";
+export type AudioFormat = "wav" | "mp3" | "pcm" | "opus";
 
-export interface TtsConfig {
-  apiKey?: string;
-  apiKeyEnv?: string;
+export interface SpeechDefaults {
   provider: TtsProvider;
   model: string;
   voice: string;
-  languageType?: string;
-  baseUrl?: string;
-  workspaceId?: string;
-  region?: string;
-  format?: string;
-  sampleRate?: number;
-  timeout?: number;
 }
 
-export interface TtsRequestOptions {
-  apiKey: string;
-  provider: TtsProvider;
-  model: string;
-  voice: string;
-  text: string;
-  languageType?: string;
-  instructions?: string;
-  optimizeInstructions?: boolean;
-  baseUrl?: string;
+export interface TtsConfig {
+  version: 2;
+  apiKey?: string;
+  apiKeyEnv?: string;
   workspaceId?: string;
-  region?: string;
-  format?: string;
-  sampleRate?: number;
-  ssml?: boolean;
+  region: string;
+  baseUrl?: string;
   timeout: number;
+  speech: SpeechDefaults;
+}
+
+export interface AudioRequest {
+  apiKey: string;
+  workspaceId?: string;
+  region: string;
+  baseUrl?: string;
+  timeout: number;
+  model: string;
+  input: Record<string, unknown>;
+  legacyQwen?: boolean;
 }
 
 export interface TtsResponse {

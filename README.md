@@ -140,26 +140,25 @@ hua ssh download /remote/path/file.txt ./local-file.txt
 
 ### TTS 插件
 
-```bash
-hua tts config set --api-key sk-xxx --voice Chelsie
-hua tts config show
-hua tts gen "你好，我是 Chelsie" -o output.wav
-hua tts gen --file input.txt -o output.wav
-hua tts gen "hello" --language English --voice Chelsie -o hello.wav
-```
+百炼的两类音频能力分别提供命令，全部使用 TypeScript，无需 Python：
 
-TTS 配置存储在 `~/.hua/tts.json`，保存时会将文件权限设置为 `0600`。其他插件配置存储在各自的 `~/.hua/*.json` 文件中。
-
-`hua tts next` 使用 Qwen-Audio 3.1 TTS Next 按文字描述生成单人配音或混合声景。`hua tts clone` 管理已有的百炼克隆音色。两个命令使用 Python 3.11+，可复用 `~/.hua-voice/voices.json`、原有百炼凭据或 `DASHSCOPE_API_KEY`。
+- `hua tts synthesize`：把稿件转换为指定音色的人声，默认 Qwen-Audio 3.1 Flash；支持 CosyVoice。
+- `hua tts generate`：按提示词生成对话、音效和环境音，使用 Qwen-Audio 3.1 TTS Next；可传参考音频。
+- `hua tts clone`：创建、查询、恢复克隆音色，或使用已登记音色合成。
 
 ```bash
-hua tts next --text-file script.txt --style "自然普通话，声音清甜，像和朋友聊天" --title "AI 讲解"
-hua tts next --prompt-file soundscape.txt --title "AI soundscape"
+export DASHSCOPE_API_KEY=sk-xxx
+hua tts config set --workspace-id <workspace-id>
+hua tts synthesize --file script.txt --instructions "用自然、温柔的普通话说" -o speech.wav
+hua tts generate --file scene.txt -o scene.wav
+hua tts generate '@voice1 说：“你好。”背景有雨声。' --reference sample.wav -o scene.wav
 hua tts clone list
-hua tts clone audio --voice da-tie-chui --text-file script.txt --title "AI 讲解"
+hua tts clone audio --voice my-voice --text-file script.txt --title "讲解"
 ```
 
-默认在 `Voice/<标题>-<唯一后缀>/` 写入音频、稿件和任务状态。首次运行 Next 时，如果注册表没有业务空间，可传 `--workspace-id`。更多命令见 [TTS 用法](.agents/skills/hua-cli/references/tts.md)。
+连接配置共用 `~/.hua/tts.json`，文件权限为 `0600`；也支持 `SFM_WORKSPACE_ID` 环境变量。已有的旧配置、`~/.hua-voice/voices.json` 和旧凭据文件可以继续读取。默认合成输出 `speech.wav`，音频生成输出 `generated-audio.wav`；用 `-o` 指定路径。克隆配音保留 `Voice/<标题>-<唯一后缀>/` 的稿件、音频及任务状态。
+
+旧命令 `gen`、`next` 分别作为别名保留。`next` 现在使用共用配置和 `-o`，不再支持 `--title`、`--output-root`、`--registry`、`--env-file`；旧脚本请按上述方式迁移。更多参数与兼容说明见 [TTS 用法](.agents/skills/hua-cli/references/tts.md)。
 
 ### 七牛云插件
 

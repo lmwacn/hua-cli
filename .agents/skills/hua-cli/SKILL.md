@@ -13,7 +13,7 @@ description: 使用 hua-cli 查询 MySQL / PostgreSQL、执行远程命令和文
 - SSH 远程执行、文件传输或服务器部署：[references/ssh.md](references/ssh.md)。
 - DNS 解析、SSL 证书申请与自动续签、证书部署账户及任务：[references/dns.md](references/dns.md)。
 - 七牛云空间、对象、CDN 或凭证配置：[references/qiniu.md](references/qiniu.md)。
-- 百炼语音合成、声音克隆、TTS Next 配音与混合声景：[references/tts.md](references/tts.md)。
+- 百炼语音合成、音频生成与声音克隆：[references/tts.md](references/tts.md)。
 - Gmail 邮件读写、附件下载或 OAuth 配置：[references/gmail.md](references/gmail.md)。
 
 只读当前操作需要的参考文件。其他子命令通过 `hua --help` 发现，不因工具支持而扩大任务范围。
