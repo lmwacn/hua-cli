@@ -4,7 +4,6 @@ import { sqlPlugin } from "@hua/plugin-sql";
 import { httpPlugin } from "@hua/plugin-http";
 import { sshPlugin } from "@hua/plugin-ssh";
 import { weixinPlugin } from "@hua/plugin-weixin";
-import { ttsPlugin } from "@hua/plugin-tts";
 import { qiniuPlugin } from "@hua/plugin-qiniu";
 import { gmailPlugin } from "@hua/plugin-gmail";
 
@@ -16,7 +15,6 @@ async function main(): Promise<void> {
   app.registerPlugin(httpPlugin);
   app.registerPlugin(sshPlugin);
   app.registerPlugin(weixinPlugin);
-  app.registerPlugin(ttsPlugin);
   app.registerPlugin(qiniuPlugin);
   app.registerPlugin(gmailPlugin);
   app.registerPlugin(dnsPlugin);

@@ -2,7 +2,7 @@
 
 一个基于 Node.js + TypeScript 的插件化 CLI 工具骨架。
 
-内置了 `sql`、`http`、`ssh`、`tts`、`qiniu`、`gmail` 等插件，分别用于数据库查询、HTTP 请求测试、远程服务器管理、语音合成、七牛云对象存储管理和 Gmail 邮件操作。
+内置了 `sql`、`http`、`ssh`、`qiniu`、`gmail` 等插件，分别用于数据库查询、HTTP 请求测试、远程服务器管理、七牛云对象存储管理和 Gmail 邮件操作。
 
 ## 特性
 
@@ -22,7 +22,6 @@ hua-cli/
     plugin-sql/   # MySQL / PostgreSQL 数据库查询
     plugin-http/  # HTTP 请求测试
     plugin-ssh/   # SSH 远程服务器管理
-    plugin-tts/   # 阿里云百炼语音合成
     plugin-qiniu/ # 七牛云对象存储管理
     plugin-gmail/ # Gmail 邮件操作
 ```
@@ -137,28 +136,6 @@ hua ssh download /remote/path/file.txt ./local-file.txt
 ```
 
 `upload-dir` 会先把本地目录打成临时 `tar.gz`，上传到远端临时目录，远端解压后自动删除远端临时包，本地临时包也会自动清理。默认解压目录内容到目标目录（`--strip-components 1`）；如需保留本地目录名，使用 `--strip-components 0`。
-
-### TTS 插件
-
-百炼的两类音频能力分别提供命令，全部使用 TypeScript，无需 Python：
-
-- `hua tts synthesize`：把稿件转换为指定音色的人声，默认 Qwen-Audio 3.1 Flash；支持 CosyVoice。
-- `hua tts generate`：按提示词生成对话、音效和环境音，使用 Qwen-Audio 3.1 TTS Next；可传参考音频。
-- `hua tts clone`：创建、查询、恢复克隆音色，或使用已登记音色合成。
-
-```bash
-export DASHSCOPE_API_KEY=sk-xxx
-hua tts config set --workspace-id <workspace-id>
-hua tts synthesize --file script.txt --instructions "用自然、温柔的普通话说" -o speech.wav
-hua tts generate --file scene.txt -o scene.wav
-hua tts generate '@voice1 说：“你好。”背景有雨声。' --reference sample.wav -o scene.wav
-hua tts clone list
-hua tts clone audio --voice my-voice --text-file script.txt --title "讲解"
-```
-
-连接配置共用 `~/.hua/tts.json`，文件权限为 `0600`；也支持 `SFM_WORKSPACE_ID` 环境变量。已有的旧配置、`~/.hua-voice/voices.json` 和旧凭据文件可以继续读取。默认合成输出 `speech.wav`，音频生成输出 `generated-audio.wav`；用 `-o` 指定路径。克隆配音保留 `Voice/<标题>-<唯一后缀>/` 的稿件、音频及任务状态。
-
-旧命令 `gen`、`next` 分别作为别名保留。`next` 现在使用共用配置和 `-o`，不再支持 `--title`、`--output-root`、`--registry`、`--env-file`；旧脚本请按上述方式迁移。更多参数与兼容说明见 [TTS 用法](.agents/skills/hua-cli/references/tts.md)。
 
 ### 七牛云插件
 
